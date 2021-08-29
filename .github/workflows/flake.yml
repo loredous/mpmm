@@ -14,11 +14,12 @@ jobs:
       with:
         python-version: 3.9
     - name: Install backend dependencies
+      working-directory: ./backend
       run: |
         python -m pip install --upgrade pip
-        pip install -r backend/requirements.txt
-        pip install pylint
-    - name: Analysing the backend code with pylint
+        pip install -r requirements.txt
+        pip install flake8
+    - name: Analysing the backend code with flake
+      working-directory: ./backend
       run: |
-        cd backend
-        pylint --rcfile=pylint.conf `find .|grep .py$|xargs`
+        flake8
