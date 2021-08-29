@@ -1,14 +1,5 @@
 from pydantic import BaseModel
-from enum import Enum, Flag
-
-class InterfaceType(Enum):
-    KISS_TNC = 0
-    TELNET = 1
-
-class InterfaceCapability(Flag):
-    RECEIVE = 1
-    TRANSMIT = 2
-    CAT_CONTROL = 4
+from models.enums import InterfaceCapability, InterfaceType
 
 class Interface(BaseModel):
     name: str

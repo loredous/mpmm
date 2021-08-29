@@ -1,11 +1,9 @@
-from shared.models.message import MessageType
 from typing import List
 from pydantic import BaseModel
-from enum import Enum
-from shared.models.interface import Interface
+from models.interface import Interface
+from models.enums import RemoteType, MessageType
 
-class RemoteType(Enum):
-    BBS = 1
+
 
 class Remote(BaseModel):
     name: str
