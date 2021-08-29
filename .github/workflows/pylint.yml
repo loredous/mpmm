@@ -3,7 +3,7 @@ name: Pylint Backend Code
 on: [push]
 
 jobs:
-  Code Linting:
+  Code_Linting:
 
     runs-on: ubuntu-latest
 
