@@ -5,6 +5,7 @@ from models.message import Message
 from typing import List
 from pydantic import BaseModel
 
+
 class Station(BaseModel):
     callsign: str
     location: str

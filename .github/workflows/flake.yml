@@ -1,4 +1,4 @@
-name: Pylint Backend Code
+name: Lint Backend Code
 
 on: [push]
 

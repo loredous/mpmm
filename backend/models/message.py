@@ -5,7 +5,6 @@ from models.enums import MessageType, MessageDirection
 from datetime import datetime
 
 
-
 class Message(BaseModel):
     remote_identifier: Optional[str]
     msg_to: List[str] = []

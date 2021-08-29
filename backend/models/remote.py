@@ -4,7 +4,6 @@ from models.interface import Interface
 from models.enums import RemoteType, MessageType
 
 
-
 class Remote(BaseModel):
     name: str
     callsign: str
