@@ -3,7 +3,7 @@ name: Pylint Backend Code
 on: [push]
 
 jobs:
-  build:
+  Code Linting:
 
     runs-on: ubuntu-latest
 
@@ -20,4 +20,5 @@ jobs:
         pip install pylint
     - name: Analysing the backend code with pylint
       run: |
-        pylint --rcfile=pylint.conf `find backend/|grep .py$|xargs`
+        cd backend
+        pylint --rcfile=pylint.conf `find .|grep .py$|xargs`
