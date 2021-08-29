@@ -1,17 +1,36 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
+from fastapi.param_functions import Body
 from models.station import Station
 
-api = FastAPI()
+api = FastAPI(title="Modern Packet Message Manager")
 
 
-class mpmmAPI():
+def get_station():
+    # TODO: Proper storage and management of our station config and data.
+    our_station = Station(
+        callsign="",
+        location="",
+        locator=""
+    )
+    return our_station
 
-    def __init__(self) -> None:
-        self.station = Station()
 
-    @api.get('/station')
-    def get_station_config(self):
-        return self.station
+@api.get('/station')
+def get_station_config(station=Depends(get_station)):
+    return station.get_base_config()
 
 
-instance = mpmmAPI()
+@api.post('/station')
+def update_station_config(
+    callsign: str = Body(default=None),
+    location: str = Body(default=None),
+    locator: str = Body(default=None),
+    station=Depends(get_station)
+):
+    if callsign:
+        station.callsign = callsign
+    if location:
+        station.location = location
+    if locator:
+        station.locator = locator
+    return station.get_base_config()
