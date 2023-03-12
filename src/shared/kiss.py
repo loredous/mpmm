@@ -1,7 +1,7 @@
 from enum import Enum
 from pydantic import BaseModel, validator
 
-from typing import List, Self
+from typing import Self
 
 
 class KISSCommand(Enum):
@@ -14,21 +14,23 @@ class KISSCommand(Enum):
     SET_HARDWARE = 6
     RETURN = 255
 
+
 class KISSCode(Enum):
     FEND = 0xC0
     FESC = 0xDB
     TFEND = 0xDC
     TFESC = 0xDD
 
+
 class KISSFrame(BaseModel):
     data: bytes
     command: KISSCommand
     port: int
 
-    @validator('port')
+    @validator("port")
     def is_valid_port(cls, v):
         if v < 0 or v > 16:
-            return ValueError('KISS port number must be between 0 and 16 inclusive')
+            return ValueError("KISS port number must be between 0 and 16 inclusive")
         return v
 
     def encode(self) -> bytes:
@@ -70,11 +72,17 @@ class KISSFrame(BaseModel):
         :returns: KISSFrame object decoded from bytes
         :raises ValueError: bytes are not a valid KISS frame
         """
-        if kiss_frame[0] != KISSCode.FEND.value or kiss_frame[-1] != KISSCode.FEND.value:
-            raise ValueError('provided kiss_frame is not a valid KISS frame. Does not begin and end with FEND (0xC0)')
+        if (
+            kiss_frame[0] != KISSCode.FEND.value or kiss_frame[-1] != KISSCode.FEND.value
+        ):
+            raise ValueError(
+                "provided kiss_frame is not a valid KISS frame. Does not begin and end with FEND (0xC0)"
+            )
         if KISSCode.FEND.value in kiss_frame[2:-2]:
-            raise ValueError('provided kiss_frame is not a valid KISS frame, or may be multiple frames. Found FEND (0xC0) in data section of frame')
-        
+            raise ValueError(
+                "provided kiss_frame is not a valid KISS frame, or may be multiple frames. Found FEND (0xC0) in data section of frame"
+            )
+
         decoded_type = kiss_frame[1]
         decoded_command = KISSCommand(decoded_type & 15)
         decoded_port = decoded_type & 240 >> 4
@@ -90,5 +98,5 @@ class KISSFrame(BaseModel):
                     decoded_data.append(KISSCode.FESC.value)
                 case _:
                     decoded_data.append(byte)
-        
+
         return cls(data=bytes(decoded_data), command=decoded_command, port=decoded_port)
