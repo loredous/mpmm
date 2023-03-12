@@ -1,3 +1,19 @@
+# Modern Packet Message Manager
+# Copyright (C) 2023  Jeremy Banker
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 from abc import ABC, abstractmethod
 import asyncio
 from enum import Enum
@@ -204,13 +220,18 @@ if __name__ == "__main__":
         print('Got Ctrl-C!')
         exit()
 
+    async def local_callback(frame: KISSFrame):
+        print('Am in local callback!')
+        print(frame)
+
     basicConfig(level=DEBUG)
     logger = getLogger('KISSTest')
     logger.info('Starting KISS Test client')
     client = KISSTCPClient("192.168.0.13:8001")
+    client.recieve_callback = local_callback
     loop = asyncio.get_event_loop()
     loop.create_task(client.start_listen())
     loop.add_signal_handler(signal.SIGINT, close)
-    fr = KISSFrame(data=b'\x82\xa0\x9a\x92`h`\x96\x96`\xb0@@t\x9c`\x82\xaa\xb0@\xe2\xae\x92\x88\x8ad@c\x03\xf0@121504z3934.15N/10455.05W-WX3in1Mini U=12.4V.', command=KISSCommand.DATA_FRAME, port=0)
-    loop.create_task(delay(client.send(fr), 30))
+    # fr = KISSFrame(data=b'\x82\xa0\x9a\x92`h`\x96\x96`\xb0@@t\x9c`\x82\xaa\xb0@\xe2\xae\x92\x88\x8ad@c\x03\xf0@121504z3934.15N/10455.05W-WX3in1Mini U=12.4V.', command=KISSCommand.DATA_FRAME, port=0)
+    # loop.create_task(delay(client.send(fr), 30))
     loop.run_forever()
