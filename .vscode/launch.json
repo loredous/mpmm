@@ -8,8 +8,8 @@
             "name": "Launch File",
             "type": "python",
             "request": "launch",
-            "program": "${file}",
-            "cwd": "${workspaceFolder}/src",
+            "program": "${relativeFile}",
+            "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
             "justMyCode": true
         }

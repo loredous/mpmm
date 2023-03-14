@@ -186,6 +186,7 @@ class KISSTCPClient(KISSClient):
                 async with asyncio.timeout(10):
                     data = await self.reader.read(1024)
                     if data:
+                        self.logger.debug(f'Got data [{data}]')
                         frame = KISSFrame.decode(data)
                         self.base_loop.create_task(self.recieve_callback(frame))
             except TimeoutError:
