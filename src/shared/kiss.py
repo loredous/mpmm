@@ -17,10 +17,10 @@
 from abc import ABC, abstractmethod
 import asyncio
 from enum import Enum
-from logging import getLogger, basicConfig, DEBUG
+from logging import getLogger
 from pydantic import BaseModel, validator
 
-from typing import Self
+from typing import List, Self
 
 
 class KISSCommand(Enum):
@@ -82,43 +82,36 @@ class KISSFrame(BaseModel):
         return kiss_frame
 
     @classmethod
-    def decode(cls, kiss_frame: bytes) -> Self:
+    def decode(cls, data: bytes) -> List[Self]:
         """
-        Decode raw bytes of a KISS frame into a KISSFrame object
+        Decode raw bytes of one or more KISS frames into KISSFrame objects
 
-        :param kiss_frame: Raw Bytes representing a KISS frame
+        :param data: Raw Bytes representing a KISS frame
 
-        :returns: KISSFrame object decoded from bytes
-        :raises ValueError: bytes are not a valid KISS frame
+        :returns: List of KISSFrame objects decoded from bytes
         """
-        if (
-            kiss_frame[0] != KISSCode.FEND.value or kiss_frame[-1] != KISSCode.FEND.value
-        ):
-            raise ValueError(
-                "provided kiss_frame is not a valid KISS frame. Does not begin and end with FEND (0xC0)"
-            )
-        if KISSCode.FEND.value in kiss_frame[2:-2]:
-            raise ValueError(
-                "provided kiss_frame is not a valid KISS frame, or may be multiple frames. Found FEND (0xC0) in data section of frame"
-            )
+        frames = data.split(bytes([KISSCode.FEND.value]))
+        decoded_frames = []
+        for frame in frames:
+            if frame == b'':
+                continue
+            decoded_type = frame[0]
+            decoded_command = KISSCommand(decoded_type & 15)
+            decoded_port = decoded_type & 240 >> 4
 
-        decoded_type = kiss_frame[1]
-        decoded_command = KISSCommand(decoded_type & 15)
-        decoded_port = decoded_type & 240 >> 4
-
-        decoded_data = []
-        for byte in kiss_frame[2:-1]:
-            match byte:
-                case KISSCode.FESC.value:
-                    continue
-                case KISSCode.TFEND.value:
-                    decoded_data.append(KISSCode.FEND.value)
-                case KISSCode.TFESC.value:
-                    decoded_data.append(KISSCode.FESC.value)
-                case _:
-                    decoded_data.append(byte)
-
-        return cls(data=bytes(decoded_data), command=decoded_command, port=decoded_port)
+            decoded_data = []
+            for byte in frame[1:]:
+                match byte:
+                    case KISSCode.FESC.value:
+                        continue
+                    case KISSCode.TFEND.value:
+                        decoded_data.append(KISSCode.FEND.value)
+                    case KISSCode.TFESC.value:
+                        decoded_data.append(KISSCode.FESC.value)
+                    case _:
+                        decoded_data.append(byte)
+            decoded_frames.append(cls(data=bytes(decoded_data), command=decoded_command, port=decoded_port))
+        return decoded_frames
 
 
 class KISSClient(ABC):
@@ -130,8 +123,11 @@ class KISSClient(ABC):
         self.logger.debug(f'Setting up KISS Client for address {address}')
         self.address = address
 
-    async def recieve_callback(self, frame: KISSFrame):
-        self.logger.info(f'Recieved: {frame.data}')
+    async def receive_callback(self, frame: bytes):
+        self.logger.debug(f'Received: {frame}')
+
+    async def decode_callback(self, frame: KISSFrame):
+        self.logger.debug(f'Decoded: {frame.data}')
 
     async def start_listen(self):
         self.logger.debug('start_listen requested')
@@ -184,17 +180,19 @@ class KISSTCPClient(KISSClient):
                 raise RuntimeError('Issue in listen loop: reader is None')
             try:
                 async with asyncio.timeout(10):
-                    data = await self.reader.read(1024)
+                    data = await self.reader.read(32768)
                     if data:
-                        self.logger.debug(f'Got data [{data}]')
-                        frame = KISSFrame.decode(data)
-                        self.base_loop.create_task(self.recieve_callback(frame))
+                        self.base_loop.create_task(self.receive_callback(data))
+                        frames = KISSFrame.decode(data)
+                        for frame in frames:
+                            self.logger.debug(f'Sending callback for [{frame}]')
+                            self.base_loop.create_task(self.decode_callback(frame))
             except TimeoutError:
                 pass
             if self._stop_requested:
                 self._running = False
                 return
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.1)
 
     async def send(self, frame: KISSFrame):
         self.logger.debug(f'Send requested for frame [{frame}]')
@@ -202,7 +200,6 @@ class KISSTCPClient(KISSClient):
             self.logger.exception('send called without writer!')
             raise RuntimeError('Issue in send: writer is None')
         self.writer.write(frame.encode())
-        self.writer.write_eof()
 
     async def close(self):
         if self.writer:
@@ -211,28 +208,5 @@ class KISSTCPClient(KISSClient):
 
 
 if __name__ == "__main__":
-    import signal
-
-    async def delay(coro, seconds):
-        await asyncio.sleep(30)
-        await coro
-
-    def close():
-        print('Got Ctrl-C!')
-        exit()
-
-    async def local_callback(frame: KISSFrame):
-        print('Am in local callback!')
-        print(frame)
-
-    basicConfig(level=DEBUG)
-    logger = getLogger('KISSTest')
-    logger.info('Starting KISS Test client')
-    client = KISSTCPClient("192.168.0.13:8001")
-    client.recieve_callback = local_callback
-    loop = asyncio.get_event_loop()
-    loop.create_task(client.start_listen())
-    loop.add_signal_handler(signal.SIGINT, close)
-    # fr = KISSFrame(data=b'\x82\xa0\x9a\x92`h`\x96\x96`\xb0@@t\x9c`\x82\xaa\xb0@\xe2\xae\x92\x88\x8ad@c\x03\xf0@121504z3934.15N/10455.05W-WX3in1Mini U=12.4V.', command=KISSCommand.DATA_FRAME, port=0)
-    # loop.create_task(delay(client.send(fr), 30))
-    loop.run_forever()
+    test = KISSFrame.decode(b'\xc0\x00\xa6\xb0j\xa2\xac\xa8`\x9c`\x82\x9a\xb2@\xe8\xae\x82l\x92\x8c\x92\xf8\x9c`\x82\xaa\xb0@\xe2\xae\x92\x88\x8ad@\xe1\x03\xf0`pL}l!vv/`"HJ}_%\r\xc0')
+    pass

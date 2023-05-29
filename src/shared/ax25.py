@@ -15,13 +15,19 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from enum import Enum, Flag
-from typing import List, Optional, Self, Tuple
+from hashlib import sha1
+from typing import List, Optional, Self, Tuple, Union
+from queue import Queue, Empty
+from logging import getLogger
+import asyncio
 
 from pydantic import BaseModel
-from utils import chunk
+from shared.utils import chunk
+from shared.kiss import KISSCommand, KISSFrame, KISSClient
 
 
 class AX25PID(Enum):
+    NONE = 0x00
     ISO_8208 = 0x01
     TCP_COMPRESSED = 0x06
     TCP_UNCOMPRESSED = 0x07
@@ -63,6 +69,35 @@ class AX25Address(BaseModel):
             command_repeat_bit=crb
         )
 
+    def encode(self):
+        address_bytes = []
+        address_bytes += self.callsign.encode('utf-8')
+        address_bytes += [32] * (6 - len(address_bytes))  # Pad with spaces!
+        for index in range(0, len(address_bytes)):
+            address_bytes[index] = (address_bytes[index] << 1)
+        finalbyte = int(self.ssid) << 1
+        if self.reserved_bit_5:
+            finalbyte = finalbyte | 32
+        if self.reserved_bit_6:
+            finalbyte = finalbyte | 64
+        if self.command_repeat_bit:
+            finalbyte = finalbyte | 128
+        address_bytes.append(finalbyte)
+        return bytes(address_bytes)
+
+    def __str__(self) -> str:
+        if self.ssid != '0':
+            address = f'{self.callsign}-{self.ssid}'
+        else:
+            address = self.callsign
+        if self.command_repeat_bit:
+            address += "*"
+        return address
+
+    @property
+    def call_with_ssid(self):
+        return f'{self.callsign}-{self.ssid}'
+
 
 class AX25AddressField(BaseModel):
     source: AX25Address
@@ -86,8 +121,36 @@ class AX25AddressField(BaseModel):
             length=len(address_bytes))
 
     def encode(self) -> bytes:
-        pass
+        field_bytes = bytearray()
+        field_bytes += self.destination.encode()
+        field_bytes += self.source.encode()
+        for repeater in self.path:
+            field_bytes += repeater.encode()
+        field_bytes[-1] = field_bytes[-1] | 1
+        return bytes(field_bytes)
 
+    def __str__(self) -> str:
+        if self.path:
+            return f'{self.source.call_with_ssid}->{self.destination.call_with_ssid},{",".join([addr.call_with_ssid for addr in self.path])}'
+        else:
+            return f'{self.source.call_with_ssid}->{self.destination.call_with_ssid}'
+
+    @property
+    def unique_connection_id(self) -> str:
+        return sha1(str(self).encode()).hexdigest()
+
+    def get_response_field(self) -> Self:
+        response_field = AX25AddressField(
+            source=self.destination,
+            destination=self.source,
+            path=self.path[::-1],
+            length=self.length
+        )
+        response_field.source.command_repeat_bit = True
+        response_field.destination.command_repeat_bit = False
+        for repeater in self.path:
+            repeater.command_repeat_bit = False
+        return response_field
 
 class AX25FrameType(Flag):
     I_FRAME = 1
@@ -125,10 +188,7 @@ class AX25ControlField(BaseModel):
         if modulo == AX25Modulo.MOD_128:
             raise NotImplementedError('MOD128 frames are not currently supported')
         match field_bytes[0] & 3:
-            case 0:
-                frame_type, sequence, receive = cls.decode_iframe_control(field_bytes, modulo)
-                length = modulo.value
-            case 2:
+            case 0 | 2:
                 frame_type, sequence, receive = cls.decode_iframe_control(field_bytes, modulo)
                 length = modulo.value
             case 1:
@@ -151,13 +211,67 @@ class AX25ControlField(BaseModel):
     def encode(self, modulo: AX25Modulo = AX25Modulo.MOD_8):
         if modulo == AX25Modulo.MOD_128:
             raise NotImplementedError('MOD128 frames are not currently supported')
+        else:
+            match self.frame_type.value & 7:  # We only care at this point about I/U/S
+                case AX25FrameType.I_FRAME.value:
+                    return self.encode_iframe()
+                case AX25FrameType.U_FRAME.value:
+                    return self.encode_uframe()
+                case AX25FrameType.S_FRAME.value:
+                    return self.encode_sframe()
+
+    def encode_iframe(self) -> bytes:
+        frame_value = 0
+        frame_value += self.sequence << 1
+        frame_value += self.receive << 5
+        frame_value += int(self.poll_final) << 4
+        return frame_value.to_bytes()
+
+    def encode_sframe(self) -> bytes:
+        frame_value = 1
+        match self.frame_type.value & 120:  # Only care about SUP flags
+            case AX25FrameType.SUP_RR.value:
+                pass
+            case AX25FrameType.SUP_RNR.value:
+                frame_value += 4
+            case AX25FrameType.SUP_REJ.value:
+                frame_value += 8
+            case AX25FrameType.SUP_SREJ.value:
+                frame_value += 12
+        frame_value += int(self.poll_final) << 4
+        frame_value += self.receive << 5
+        return frame_value.to_bytes()
+
+    def encode_uframe(self) -> bytes:
+        frame_value = 3
+        frame_value += int(self.poll_final) << 4
+        match self.frame_type.value & 65408:  # Only care about UNN frame flags
+            case AX25FrameType.UNN_SABME.value:
+                frame_value += 108
+            case AX25FrameType.UNN_SABM.value:
+                frame_value += 44
+            case AX25FrameType.UNN_DISC.value:
+                frame_value += 64
+            case AX25FrameType.UNN_DM.value:
+                frame_value += 12
+            case AX25FrameType.UNN_UA.value:
+                frame_value += 96
+            case AX25FrameType.UNN_FRMR.value:
+                frame_value += 132
+            case AX25FrameType.UNN_UI.value:
+                pass
+            case AX25FrameType.UNN_XID.value:
+                frame_value += 172
+            case AX25FrameType.UNN_TEST.value:
+                frame_value += 224
+        return frame_value.to_bytes()
 
     @staticmethod
     def decode_iframe_control(field_bytes: bytes, modulo: AX25Modulo = AX25Modulo.MOD_8) -> Tuple[AX25FrameType, int, int]:
         if modulo == AX25Modulo.MOD_128:
             raise NotImplementedError('MOD128 frames are not currently supported')
         frame_type = AX25FrameType.I_FRAME
-        sequence = int((field_bytes[0] & 6) >> 1)
+        sequence = int((field_bytes[0] & 14) >> 1)
         response = int((field_bytes[0] & 224) >> 5)
         return (frame_type, sequence, response)
 
@@ -165,7 +279,7 @@ class AX25ControlField(BaseModel):
     def decode_sframe_control(field_bytes: bytes, modulo: AX25Modulo = AX25Modulo.MOD_8) -> Tuple[AX25FrameType, int]:
         if modulo == AX25Modulo.MOD_128:
             raise NotImplementedError('MOD128 frames are not currently supported')
-        frame_type = AX25FrameType.I_FRAME
+        frame_type = AX25FrameType.S_FRAME
         match field_bytes[0] & 12:
             case 0:
                 frame_type = frame_type | AX25FrameType.SUP_RR
@@ -210,16 +324,22 @@ class AX25Frame(BaseModel):
     address_field: AX25AddressField
     control_field: AX25ControlField
     pid: Optional[AX25PID]
-    information: Optional[bytes]
+    information: Optional[bytes] = None
 
     @classmethod
-    def decode(cls, frame_data: bytes, modulo: AX25Modulo = AX25Modulo.MOD_8):
+    def decode(cls, frame: Union[bytes, KISSFrame], modulo: AX25Modulo = AX25Modulo.MOD_8):
         if modulo == AX25Modulo.MOD_128:
             raise NotImplementedError('MOD128 frames are not currently supported')
+        if isinstance(frame, bytes):
+            frame_data = frame
+        elif isinstance(frame, KISSFrame):
+            frame_data = frame.data
+        else:
+            raise RuntimeError('Invalid data type for frame. Expected bytes or KISSFrame')
         addr_field = cls.decode_address_field(frame_data)
         control_field = cls.decode_control_field(frame=frame_data, offset=addr_field.length, modulo=modulo)
-        pid = None
         offset = addr_field.length + control_field.length
+        pid = None
         if control_field.frame_type & (AX25FrameType.I_FRAME | AX25FrameType.UNN_UI):
             pid = AX25PID(frame_data[offset])
             offset += 1
@@ -233,12 +353,13 @@ class AX25Frame(BaseModel):
         )
 
     def encode(self) -> bytes:
-        frame_data = []
+        frame_data = b''
         frame_data += self.address_field.encode()
         frame_data += self.control_field.encode(self.modulo)
         if self.pid:
-            frame_data += bytes(self.pid.value)
-        frame_data += bytes(self.information)
+            frame_data += self.pid.value.to_bytes()
+        if self.information:
+            frame_data += bytes(self.information)
         return frame_data
 
     @staticmethod
@@ -255,6 +376,167 @@ class AX25Frame(BaseModel):
         return AX25AddressField.decode(bytes(address_field))
 
 
-if __name__ == "__main__":
-    print(AX25Frame.decode(b'\x82\xa0\x9a\x92`l`\x9c`\x82\xaa\xb0@b\xae\x92\x88\x8ad@e\x03\xf0@121758z3915.89NI10506.85W#PHG5130/Devils Head Digi/I-Gate14.0V,16.5C/61.7F/A=009150'))
-    # N0AUX-1>APMI06,WIDE2-2
+class AX25ConnectionDirection(Enum):
+    INCOMING = 1
+    OUTGOING = 2
+
+
+class AX25Connection():
+    def __init__(self, local_callsign: str, remote_callsign: str, direction: AX25ConnectionDirection, logger = None) -> None:
+        if not logger:
+            logger = getLogger(f'AX25Connection[{local_callsign}<->{remote_callsign}]')
+        self.logger = logger
+        self._local = local_callsign
+        self._remote = remote_callsign
+        self._incoming = Queue()
+        self._outgoing = Queue()
+        self._direction = direction
+        self.established = False
+
+    def recieve(self, frame: AX25Frame):
+        self._incoming.put_nowait(frame)
+
+    def get_outgoing_frames(self) -> List[AX25Frame]:
+        outgoing = []
+        while not self._outgoing.empty():
+            frame = self._outgoing.get_nowait()
+            outgoing.append(frame)
+        if outgoing:
+            self.logger.debug(f'{len(outgoing)} outgoing frames')
+        return outgoing
+
+    @property
+    def callsign(self) -> str:
+        return self._local
+    
+    @property
+    def direction(self) -> AX25ConnectionDirection:
+        return self._direction
+
+    def process(self) -> None:
+        self._handle_incoming_frames()
+        self._handle_timers()
+
+    def _handle_sabme(self, frame: AX25Frame) -> None:
+        self.logger.debug('Connection got SABME')
+        # Currently no handling of Extended mode, always send DM
+        response = AX25Frame(
+            address_field=frame.address_field.get_response_field(),
+            control_field=AX25ControlField(
+                frame_type=AX25FrameType.U_FRAME | AX25FrameType.UNN_DM,
+                sequence=None,
+                receive=None,
+                length=frame.modulo.value,
+                poll_final=frame.control_field.poll_final
+            ),
+            modulo=frame.modulo,
+            pid=frame.pid,
+            information=None
+        )
+        self._outgoing.put(response)
+
+    def _handle_sabm(self, frame: AX25Frame) -> None:
+        self.logger.debug('Connection got SABM')
+        if self.established:
+            response = AX25Frame(
+                address_field=frame.address_field.get_response_field(),
+                control_field=AX25ControlField(
+                    frame_type=AX25FrameType.U_FRAME | AX25FrameType.UNN_DM,
+                    sequence=None,
+                    receive=None,
+                    length=frame.modulo.value,
+                    poll_final=frame.control_field.poll_final
+                ),
+                modulo=frame.modulo,
+                pid=frame.pid,
+                information=None
+            )
+            self._outgoing.put(response)
+        else:
+            response = AX25Frame(
+                address_field=frame.address_field.get_response_field(),
+                control_field=AX25ControlField(
+                    frame_type=AX25FrameType.U_FRAME | AX25FrameType.UNN_UA,
+                    sequence=None,
+                    receive=None,
+                    length=frame.modulo.value,
+                    poll_final=frame.control_field.poll_final
+                ),
+                modulo=frame.modulo,
+                pid=frame.pid,
+                information=None
+            )
+            self._outgoing.put(response)
+            self.established = True
+
+    def _handle_incoming_frames(self) -> None:
+        while not self._incoming.empty():
+            frame = self._incoming.get_nowait()
+            if frame.control_field.frame_type == (AX25FrameType.U_FRAME | AX25FrameType.UNN_SABM):
+                self._handle_sabm(frame)
+            elif frame.control_field.frame_type == (AX25FrameType.U_FRAME | AX25FrameType.UNN_SABME):
+                self._handle_sabme(frame)
+
+    def _handle_timers(self) -> None:
+        pass
+
+
+class AX25Client():
+    def __init__(self, tnc: KISSClient, retry_count: int = 5, promiscuous: bool = False, logger = None) -> None:
+        if not logger:
+            logger = getLogger('AX25Client')
+        self.logger = logger
+        self._tnc = tnc
+        self._retry_count = retry_count
+        self._tnc.decode_callback = self.recieve_frame
+        self._stop_requested = False
+        self._running = False
+        self._promiscuous = promiscuous
+        self._connections = {}
+        self._listeners = []
+
+    async def recieve_frame(self, frame: KISSFrame):
+        axframe = AX25Frame.decode(frame)
+        self.logger.debug(f'Got frame {str(axframe.address_field.source)}->{str(axframe.address_field.destination)}')
+        if axframe.address_field.unique_connection_id in self._connections.keys():
+            self.logger.debug(f'Accepted frame {str(axframe.address_field)} for existing connection')
+            self._connections[axframe.address_field.unique_connection_id].recieve(axframe)
+        elif axframe.address_field.destination.call_with_ssid in self._listeners:
+            self.logger.debug(f'Accepted frame {str(axframe.address_field)} for listener')
+            self._loop.create_task(self.listener_accept_connection(axframe))
+
+    async def listener_accept_connection(self, frame: AX25Frame):
+        new_connection = AX25Connection(
+            local_callsign=frame.address_field.destination.call_with_ssid,
+            remote_callsign=frame.address_field.source.call_with_ssid,
+            direction=AX25ConnectionDirection.INCOMING
+        )
+        new_connection.recieve(frame)
+        self._connections[frame.address_field.unique_connection_id] = new_connection
+
+    async def main_loop(self):
+        while True:
+            outgoing_frames = []
+            for connection in self._connections:
+                self._connections[connection].process()
+                outgoing_frames += self._connections[connection].get_outgoing_frames()
+            for frame in outgoing_frames:
+                await self._tnc.send(KISSFrame(data=frame.encode(), command=KISSCommand.DATA_FRAME, port=0))  #TODO: Handle more than 1 KISS port
+            if self._stop_requested:
+                self._running = False
+                return
+            await asyncio.sleep(0.1)
+
+    async def start(self):
+        self._loop = asyncio.get_running_loop()
+        self._loop.create_task(self._tnc.start_listen())
+        self._loop.create_task(self.main_loop())
+        self._running = True
+
+    async def stop(self, close=True):
+        self._stop_requested = True
+        self._tnc.stop_listen(close)
+
+    def add_listener(self, callsign: str) -> None:
+        if callsign not in self._listeners:
+            self._listeners.append(callsign)

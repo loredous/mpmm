@@ -14,9 +14,26 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from itertools import islice
+import asyncio
+from logging import DEBUG, basicConfig, getLogger
+
+from shared.kiss import KISSTCPClient
+from shared.ax25 import AX25Client
 
 
-def chunk(value_list: list, chunk_size: int):
-    value_list = iter(value_list)
-    return iter(lambda: tuple(islice(value_list, chunk_size)), ())
+if __name__ == "__main__":
+    import signal
+
+    def close():
+        exit()
+
+    basicConfig(level=DEBUG)
+    logger = getLogger('KISSTest')
+    logger.info('Starting KISS Test client')
+    kiss_client = KISSTCPClient("192.168.0.13:8001")
+    ax25_client = AX25Client(kiss_client, promiscuous=True)
+    loop = asyncio.get_event_loop()
+    loop.create_task(ax25_client.start())
+    loop.add_signal_handler(signal.SIGINT, close)
+    ax25_client.add_listener('W0IA-7')
+    loop.run_forever()

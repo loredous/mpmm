@@ -16,7 +16,6 @@
 
 import os
 import sys
-import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
@@ -26,7 +25,7 @@ from shared.kiss import KISSFrame, KISSCommand  # noqa: E402
 
 def test_simple_decode():
     # Arrange
-    test_frame = [0xC0, 0x00, 0x54, 0x45, 0x53, 0x54, 0xC0]
+    test_frame = bytes([0xC0, 0x00, 0x54, 0x45, 0x53, 0x54, 0xC0])
     expected_port = 0
     expected_command = KISSCommand.DATA_FRAME
     expected_data = b"TEST"
@@ -35,50 +34,55 @@ def test_simple_decode():
     frame = KISSFrame.decode(test_frame)
 
     # Assert
-    assert isinstance(frame, KISSFrame)
-    assert frame.port == expected_port
-    assert frame.command == expected_command
-    assert frame.data == expected_data
+    assert isinstance(frame, list)
+    assert isinstance(frame[0], KISSFrame)
+    assert frame[0].port == expected_port
+    assert frame[0].command == expected_command
+    assert frame[0].data == expected_data
 
 
 def test_complex_decode():
     # Arrange
-    test_frame = [0xC0, 0x00, 0x54, 0xDB, 0xDC, 0x45, 0x53, 0xDB, 0xDD, 0x54, 0xC0]
+    test_frame = bytes([0xC0, 0x00, 0x54, 0xDB, 0xDC, 0x45, 0x53, 0xDB, 0xDD, 0x54, 0xC0])
     expected_port = 0
     expected_command = KISSCommand.DATA_FRAME
-    expected_data = [0x54, 0xC0, 0x45, 0x53, 0xDB, 0x54]
+    expected_data = bytes([0x54, 0xC0, 0x45, 0x53, 0xDB, 0x54])
 
     # Act
     frame = KISSFrame.decode(test_frame)
 
     # Assert
-    assert isinstance(frame, KISSFrame)
-    assert frame.port == expected_port
-    assert frame.command == expected_command
-    assert list(frame.data) == expected_data
+    assert isinstance(frame, list)
+    assert isinstance(frame[0], KISSFrame)
+    assert frame[0].port == expected_port
+    assert frame[0].command == expected_command
+    assert frame[0].data == expected_data
 
 
-def test_decode_extra_fend():
+def test_decode_multiple_frames():
     # Arrange
-    test_frame = [0xC0, 0x00, 0x54, 0xC0, 0x45, 0x53, 0x54, 0xC0]
+    test_frame = bytes([0xC0, 0x00, 0x54, 0x45, 0x53, 0x54, 0xC0, 0xC0, 0x00, 0x54, 0xDB, 0xDC, 0x45, 0x53, 0xDB, 0xDD, 0x54, 0xC0])
+    expected_port_1 = 0
+    expected_command_1 = KISSCommand.DATA_FRAME
+    expected_data_1 = b"TEST"
+    expected_port_2 = 0
+    expected_command_2 = KISSCommand.DATA_FRAME
+    expected_data_2 = bytes([0x54, 0xC0, 0x45, 0x53, 0xDB, 0x54])
 
     # Act
-    with pytest.raises(ValueError) as exc_info:
-        KISSFrame.decode(test_frame)
+    frame = KISSFrame.decode(test_frame)
 
     # Assert
-    assert exc_info.typename == "ValueError"
-
-
-def test_decode_missing_fend():
-    # Arrange
-    test_frame = [0xC0, 0x00, 0x54, 0x45, 0x53, 0x54]
-    # Act
-    with pytest.raises(ValueError) as exc_info:
-        KISSFrame.decode(test_frame)
-
-    # Assert
-    assert exc_info.typename == "ValueError"
+    assert isinstance(frame, list)
+    assert len(frame) == 2
+    assert isinstance(frame[0], KISSFrame)
+    assert frame[0].port == expected_port_1
+    assert frame[0].command == expected_command_1
+    assert frame[0].data == expected_data_1
+    assert isinstance(frame[1], KISSFrame)
+    assert frame[1].port == expected_port_2
+    assert frame[1].command == expected_command_2
+    assert frame[1].data == expected_data_2
 
 
 def test_simple_encode():

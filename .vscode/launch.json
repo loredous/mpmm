@@ -4,12 +4,22 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+
         {
-            "name": "Launch File",
+            "name": "Main Testing",
             "type": "python",
             "request": "launch",
-            "program": "${relativeFile}",
-            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/src/testing.py",
+            "cwd": "${workspaceFolder}/src",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "AX25 Testing",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/ax25test.py",
+            "cwd": "${workspaceFolder}/src",
             "console": "integratedTerminal",
             "justMyCode": true
         }
