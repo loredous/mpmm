@@ -63,7 +63,7 @@ class KISSFrame(BaseModel):
 
         # Add the command and port
         type_indicator = self.command.value | self.port << 4
-        kiss_frame += bytes([type_indicator])
+        kiss_frame += type_indicator.to_bytes()
 
         # Encode each byte of the frame
         for byte in self.data:
@@ -75,7 +75,7 @@ class KISSFrame(BaseModel):
                 kiss_frame += bytes([KISSCode.FESC.value, KISSCode.TFESC.value])
             # Otherwise, just add the byte to the KISS frame
             else:
-                kiss_frame += bytes([byte])
+                kiss_frame += byte.to_bytes()
 
         # End the KISS frame with FEND
         kiss_frame += bytes([KISSCode.FEND.value])

@@ -18,22 +18,32 @@ import asyncio
 from logging import DEBUG, basicConfig, getLogger
 
 from shared.kiss import KISSTCPClient
-from shared.ax25 import AX25Client
+from shared.ax25 import AX25Client, AX25Controller, AX25Listener
 
 
 if __name__ == "__main__":
     import signal
 
     def close():
+        controller.stop()
         exit()
 
+    def handle_connection(connection):
+        logger.info(f'Got callback for connection {connection}')
+
+    async def pinger():
+        while True:
+            await asyncio.sleep(10)
+            controller.send_ui_frame('K0JLB', 'ID', 'Ping!', client=controller.clients[0])
     basicConfig(level=DEBUG)
     logger = getLogger('KISSTest')
     logger.info('Starting KISS Test client')
+    controller = AX25Controller()
+    controller.start()
     kiss_client = KISSTCPClient("192.168.0.13:8001")
-    ax25_client = AX25Client(kiss_client, promiscuous=True)
+    controller.add_client(AX25Client(kiss_client))
+    controller.add_listener(AX25Listener(callsign='K0JLB-14', incoming_callback=handle_connection))
     loop = asyncio.get_event_loop()
-    loop.create_task(ax25_client.start())
-    loop.add_signal_handler(signal.SIGINT, close)
-    ax25_client.add_listener('W0IA-7')
+    #loop.create_task(pinger())
+    loop.add_signal_handler(sig=signal.SIGINT, callback=close)
     loop.run_forever()
