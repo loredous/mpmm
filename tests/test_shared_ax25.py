@@ -17,18 +17,18 @@
 import os
 import sys
 import base64
-import json
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 
 from shared.ax25 import AX25AddressField, AX25ControlField, AX25Frame, AX25Address  # noqa: E402
 
+
 def test_entire_frame_decode_encode():
     # Arrange
     FRAME_DATA = base64.b64decode('qKJgsqyuYK6Ebo6kQPKcbpSUskDwrmCqoKZA/q6SiIpkQOED8GBwSyhuSWlrL2AiSDF9TGlzdGVuaW5nIG9uIDQ0OS4zMDAgLSB3YjdnckBhcnJsLm5ldF8lDQ==')
     EXPECTED_FRAME = AX25Frame.parse_raw('{"modulo": 1, "address_field": {"source": {"callsign": "WB7GR", "ssid": "9", "reserved_bit_5": true, "reserved_bit_6": true, "command_repeat_bit": true}, "destination": {"callsign": "TQ0YVW", "ssid": "0", "reserved_bit_5": true, "reserved_bit_6": true, "command_repeat_bit": false}, "path": [{"callsign": "N7JJY", "ssid": "8", "reserved_bit_5": true, "reserved_bit_6": true, "command_repeat_bit": true}, {"callsign": "W0UPS", "ssid": "15", "reserved_bit_5": true, "reserved_bit_6": true, "command_repeat_bit": true}, {"callsign": "WIDE2", "ssid": "0", "reserved_bit_5": true, "reserved_bit_6": true, "command_repeat_bit": true}], "length": 35}, "control_field": {"frame_type": 8196, "length": 1, "poll_final": false, "sequence": null, "receive": null}, "pid": 240, "information": "`pK(nIik/`\\"H1}Listening on 449.300 - wb7gr@arrl.net_%\\r"}')
-    
+
     # Act
     decoded_frame = AX25Frame.decode(FRAME_DATA)
     encoded_bytes = decoded_frame.encode()
@@ -79,6 +79,7 @@ def test_control_field_encode_decode_uframe():
     assert ctrl == EXPECTED_CONTROL_FIELD
     assert encoded_bytes == BYTE_DATA
 
+
 def test_control_field_encode_decode_iframe():
     # Arrange
     BYTE_DATA = b'\xDC'
@@ -91,6 +92,7 @@ def test_control_field_encode_decode_iframe():
     # Assert
     assert ctrl == EXPECTED_CONTROL_FIELD
     assert encoded_bytes == BYTE_DATA
+
 
 def test_control_field_encode_decode_sframe():
     # Arrange

@@ -17,9 +17,8 @@
 from enum import Enum, Flag
 import gc
 from hashlib import sha1
-import inspect
 from typing import Callable, List, Optional, Self, Tuple, Union, Dict
-from queue import PriorityQueue, Queue, Empty
+from queue import PriorityQueue, Queue
 from logging import Logger, getLogger
 import asyncio
 from uuid import UUID, uuid4
@@ -70,15 +69,15 @@ class AX25Address(BaseModel):
             ssid=ssid,
             reserved_bit_5=rb5,
             reserved_bit_6=rb6,
-            command_repeat_bit=crb
+            command_repeat_bit=crb,
         )
 
     def encode(self):
         address_bytes = []
-        address_bytes += self.callsign.encode('utf-8')
+        address_bytes += self.callsign.encode("utf-8")
         address_bytes += [32] * (6 - len(address_bytes))  # Pad with spaces!
         for index in range(0, len(address_bytes)):
-            address_bytes[index] = (address_bytes[index] << 1)
+            address_bytes[index] = address_bytes[index] << 1
         finalbyte = int(self.ssid) << 1
         if self.reserved_bit_5:
             finalbyte = finalbyte | 32
@@ -90,8 +89,8 @@ class AX25Address(BaseModel):
         return bytes(address_bytes)
 
     def __str__(self) -> str:
-        if self.ssid != '0':
-            address = f'{self.callsign}-{self.ssid}'
+        if self.ssid != "0":
+            address = f"{self.callsign}-{self.ssid}"
         else:
             address = self.callsign
         if self.command_repeat_bit:
@@ -100,21 +99,18 @@ class AX25Address(BaseModel):
 
     @property
     def call_with_ssid(self):
-        return f'{self.callsign}-{self.ssid}'
-    
+        return f"{self.callsign}-{self.ssid}"
+
     @classmethod
     def from_callsign(cls, callsign: str) -> Self:
         if "-" in callsign:
-            components = callsign.split('-')
+            components = callsign.split("-")
             call = components[0]
             ssid = components[1]
         else:
             call = callsign
             ssid = 0
-        return cls(
-            callsign=call,
-            ssid=ssid
-        )
+        return cls(callsign=call, ssid=ssid)
 
 
 class AX25AddressField(BaseModel):
@@ -136,7 +132,8 @@ class AX25AddressField(BaseModel):
             source=source,
             destination=destination,
             path=repeaters,
-            length=len(address_bytes))
+            length=len(address_bytes),
+        )
 
     def encode(self) -> bytes:
         field_bytes = bytearray()
@@ -151,14 +148,14 @@ class AX25AddressField(BaseModel):
         if self.path:
             return f'{self.source.call_with_ssid}->{self.destination.call_with_ssid},{",".join([addr.call_with_ssid for addr in self.path])}'
         else:
-            return f'{self.source.call_with_ssid}->{self.destination.call_with_ssid}'
+            return f"{self.source.call_with_ssid}->{self.destination.call_with_ssid}"
 
     def get_response_field(self) -> Self:
         response_field = AX25AddressField(
             source=self.destination,
             destination=self.source,
             path=self.path[::-1],
-            length=self.length
+            length=self.length,
         )
         response_field.source.command_repeat_bit = True
         response_field.destination.command_repeat_bit = False
@@ -201,10 +198,12 @@ class AX25ControlField(BaseModel):
     @classmethod
     def decode(cls, field_bytes: bytes, modulo: AX25Modulo = AX25Modulo.MOD_8) -> Self:
         if modulo == AX25Modulo.MOD_128:
-            raise NotImplementedError('MOD128 frames are not currently supported')
+            raise NotImplementedError("MOD128 frames are not currently supported")
         match field_bytes[0] & 3:
             case 0 | 2:
-                frame_type, sequence, receive = cls.decode_iframe_control(field_bytes, modulo)
+                frame_type, sequence, receive = cls.decode_iframe_control(
+                    field_bytes, modulo
+                )
                 length = modulo.value
             case 1:
                 frame_type, receive = cls.decode_sframe_control(field_bytes, modulo)
@@ -220,12 +219,12 @@ class AX25ControlField(BaseModel):
             length=length,
             poll_final=poll_final,
             sequence=sequence,
-            receive=receive
+            receive=receive,
         )
 
     def encode(self, modulo: AX25Modulo = AX25Modulo.MOD_8):
         if modulo == AX25Modulo.MOD_128:
-            raise NotImplementedError('MOD128 frames are not currently supported')
+            raise NotImplementedError("MOD128 frames are not currently supported")
         else:
             match self.frame_type.value & 7:  # We only care at this point about I/U/S
                 case AX25FrameType.I_FRAME.value:
@@ -282,18 +281,22 @@ class AX25ControlField(BaseModel):
         return frame_value.to_bytes()
 
     @staticmethod
-    def decode_iframe_control(field_bytes: bytes, modulo: AX25Modulo = AX25Modulo.MOD_8) -> Tuple[AX25FrameType, int, int]:
+    def decode_iframe_control(
+        field_bytes: bytes, modulo: AX25Modulo = AX25Modulo.MOD_8
+    ) -> Tuple[AX25FrameType, int, int]:
         if modulo == AX25Modulo.MOD_128:
-            raise NotImplementedError('MOD128 frames are not currently supported')
+            raise NotImplementedError("MOD128 frames are not currently supported")
         frame_type = AX25FrameType.I_FRAME
         sequence = int((field_bytes[0] & 14) >> 1)
         response = int((field_bytes[0] & 224) >> 5)
         return (frame_type, sequence, response)
 
     @staticmethod
-    def decode_sframe_control(field_bytes: bytes, modulo: AX25Modulo = AX25Modulo.MOD_8) -> Tuple[AX25FrameType, int]:
+    def decode_sframe_control(
+        field_bytes: bytes, modulo: AX25Modulo = AX25Modulo.MOD_8
+    ) -> Tuple[AX25FrameType, int]:
         if modulo == AX25Modulo.MOD_128:
-            raise NotImplementedError('MOD128 frames are not currently supported')
+            raise NotImplementedError("MOD128 frames are not currently supported")
         frame_type = AX25FrameType.S_FRAME
         match field_bytes[0] & 12:
             case 0:
@@ -308,9 +311,11 @@ class AX25ControlField(BaseModel):
         return (frame_type, response)
 
     @staticmethod
-    def decode_uframe_control(field_bytes: bytes, modulo: AX25Modulo = AX25Modulo.MOD_8) -> AX25FrameType:
+    def decode_uframe_control(
+        field_bytes: bytes, modulo: AX25Modulo = AX25Modulo.MOD_8
+    ) -> AX25FrameType:
         if modulo == AX25Modulo.MOD_128:
-            raise NotImplementedError('MOD128 frames are not currently supported')
+            raise NotImplementedError("MOD128 frames are not currently supported")
         frame_type = AX25FrameType.U_FRAME
         match field_bytes[0] & 236:
             case 108:
@@ -342,17 +347,23 @@ class AX25Frame(BaseModel):
     information: Optional[bytes] = None
 
     @classmethod
-    def decode(cls, frame: Union[bytes, KISSFrame], modulo: AX25Modulo = AX25Modulo.MOD_8):
+    def decode(
+        cls, frame: Union[bytes, KISSFrame], modulo: AX25Modulo = AX25Modulo.MOD_8
+    ):
         if modulo == AX25Modulo.MOD_128:
-            raise NotImplementedError('MOD128 frames are not currently supported')
+            raise NotImplementedError("MOD128 frames are not currently supported")
         if isinstance(frame, bytes):
             frame_data = frame
         elif isinstance(frame, KISSFrame):
             frame_data = frame.data
         else:
-            raise RuntimeError('Invalid data type for frame. Expected bytes or KISSFrame')
+            raise RuntimeError(
+                "Invalid data type for frame. Expected bytes or KISSFrame"
+            )
         addr_field = cls.decode_address_field(frame_data)
-        control_field = cls.decode_control_field(frame=frame_data, offset=addr_field.length, modulo=modulo)
+        control_field = cls.decode_control_field(
+            frame=frame_data, offset=addr_field.length, modulo=modulo
+        )
         offset = addr_field.length + control_field.length
         pid = None
         if control_field.frame_type & (AX25FrameType.I_FRAME | AX25FrameType.UNN_UI):
@@ -364,11 +375,11 @@ class AX25Frame(BaseModel):
             address_field=addr_field,
             control_field=control_field,
             pid=pid,
-            information=bytes(information)
+            information=bytes(information),
         )
 
     def encode(self) -> bytes:
-        frame_data = b''
+        frame_data = b""
         frame_data += self.address_field.encode()
         frame_data += self.control_field.encode(self.modulo)
         if self.pid:
@@ -378,8 +389,10 @@ class AX25Frame(BaseModel):
         return frame_data
 
     @staticmethod
-    def decode_control_field(frame: bytes, offset: int, modulo: AX25Modulo = AX25Modulo.MOD_8):
-        return AX25ControlField.decode(frame[offset:(offset + modulo.value)])
+    def decode_control_field(
+        frame: bytes, offset: int, modulo: AX25Modulo = AX25Modulo.MOD_8
+    ):
+        return AX25ControlField.decode(frame[offset: (offset + modulo.value)])
 
     @staticmethod
     def decode_address_field(frame: bytes) -> AX25AddressField:
@@ -391,58 +404,52 @@ class AX25Frame(BaseModel):
         return AX25AddressField.decode(bytes(address_field))
 
 
-class AX25FrameFactory():
+class AX25FrameFactory:
     @staticmethod
     def dm_response(axframe: AX25Frame, poll_final: bool = False):
         addr = axframe.address_field.get_response_field()
         control = AX25ControlField(
             frame_type=AX25FrameType.U_FRAME | AX25FrameType.UNN_DM,
-            poll_final=poll_final
+            poll_final=poll_final,
         )
-        frame = AX25Frame(
-            address_field=addr,
-            control_field=control,
-            pid=AX25PID.NONE
-        )
+        frame = AX25Frame(address_field=addr, control_field=control, pid=AX25PID.NONE)
         return frame
-    
+
     @staticmethod
     def ua_response(axframe: AX25Frame, poll_final: bool = False):
         addr = axframe.address_field.get_response_field()
         control = AX25ControlField(
             frame_type=AX25FrameType.U_FRAME | AX25FrameType.UNN_UA,
-            poll_final=poll_final
+            poll_final=poll_final,
         )
-        frame = AX25Frame(
-            address_field=addr,
-            control_field=control,
-            pid=AX25PID.NONE
-        )
+        frame = AX25Frame(address_field=addr, control_field=control, pid=AX25PID.NONE)
         return frame
 
-##### AX.25 STATE MACHINES #####
+
+##### AX.25 STATE MACHINES ##### noqa: E266
 
 
 class AX25ClientFrame(BaseModel):
     axframe: AX25Frame
-    port: conint(ge=0,le=15) = 0
-    priority: conint(ge=0,le=10) = 5
+    port: conint(ge=0, le=15) = 0
+    priority: conint(ge=0, le=10) = 5
 
     def __lt__(self, other: Self):
         if isinstance(other, AX25ClientFrame):
             return self.priority < other.priority
 
 
-class AX25Client():
-
-    def __init__(self, tnc: KISSClient, logger: Logger = None, client_id: UUID = uuid4()) -> None:
+class AX25Client:
+    def __init__(
+        self, tnc: KISSClient, logger: Logger = None, client_id: UUID = uuid4()
+    ) -> None:
         if not logger:
-            logger = getLogger(f'AX25Client[{client_id}]')
+            logger = getLogger(f"AX25Client[{client_id}]")
         self.logger = logger
         self._id = client_id
         self._tnc = tnc
         self._tnc.decode_callback = self.recieve_frame
-        self._data_callbacks: "List[Callable[[AX25Frame, Self, int],None]]" = [] 
+        self._data_callbacks: "List[Callable[[AX25Frame, Self, int],None]]" = []
         self._stop_requested = False
         self._running = False
         self._outgoing: "Queue[AX25ClientFrame]" = PriorityQueue()
@@ -452,22 +459,30 @@ class AX25Client():
         return self._id
 
     async def recieve_frame(self, frame: KISSFrame):
-        self.logger.debug('Got KISS frame, attempting to decode as AX25')
+        self.logger.debug("Got KISS frame, attempting to decode as AX25")
         try:
             axframe = AX25Frame.decode(frame)
-            self.logger.debug(f'Got frame {str(axframe.address_field.source)}->{str(axframe.address_field.destination)}')
+            self.logger.debug(
+                f"Got frame {str(axframe.address_field.source)}->{str(axframe.address_field.destination)}"
+            )
             for callback in self._data_callbacks:
                 callback(axframe, self, frame.port)
         except Exception:
-            self.logger.exception('Exception when attempting to decode KISS frame!')
+            self.logger.exception("Exception when attempting to decode KISS frame!")
 
     async def main_loop(self):
         while True:
             while not self._outgoing.empty():
                 frame = self._outgoing.get_nowait()
-                await self._tnc.send(KISSFrame(data=frame.axframe.encode(), command=KISSCommand.DATA_FRAME, port=frame.port))  #TODO: Handle more than 1 KISS port
+                await self._tnc.send(
+                    KISSFrame(
+                        data=frame.axframe.encode(),
+                        command=KISSCommand.DATA_FRAME,
+                        port=frame.port,
+                    )
+                )
             if self._stop_requested:
-                self.logger.info('Answering stop')
+                self.logger.info("Answering stop")
                 self._running = False
                 return
             await asyncio.sleep(0.1)
@@ -476,25 +491,29 @@ class AX25Client():
         if isinstance(client_frame, AX25ClientFrame):
             self._outgoing.put_nowait(client_frame)
         else:
-            raise TypeError('client_frame must be of type AX25ClientFrame')
+            raise TypeError("client_frame must be of type AX25ClientFrame")
 
-    def add_data_callback(self, data_callback: Callable[[AX25Frame, Self, int],None]) -> None:
+    def add_data_callback(
+        self, data_callback: Callable[[AX25Frame, Self, int], None]
+    ) -> None:
         if callable(data_callback):
             self._data_callbacks.append(data_callback)
-    
-    def remove_data_callback(self, data_callback: Callable[[AX25Frame, Self, int],None]) -> None:
+
+    def remove_data_callback(
+        self, data_callback: Callable[[AX25Frame, Self, int], None]
+    ) -> None:
         if callable(data_callback):
             self._data_callbacks.remove(data_callback)
 
     async def start(self):
-        self.logger.info('Start requested')
+        self.logger.info("Start requested")
         self._loop = asyncio.get_running_loop()
         self._loop.create_task(self._tnc.start_listen())
         self._loop.create_task(self.main_loop())
         self._running = True
 
     async def stop(self, close=True):
-        self.logger.info('Stop requested')
+        self.logger.info("Stop requested")
         self._stop_requested = True
         self._tnc.stop_listen(close)
 
@@ -521,15 +540,21 @@ class AX25Data(BaseModel):
         )
 
 
-class AX25Connection():
-
-    def __init__(self, local_callsign: str, remote_callsign: str, client: AX25Client, port: int, logger=None) -> None:
+class AX25Connection:
+    def __init__(
+        self,
+        local_callsign: str,
+        remote_callsign: str,
+        client: AX25Client,
+        port: int,
+        logger=None,
+    ) -> None:
         self._local = local_callsign
         self._remote = remote_callsign
         self._client = client
         self._port = port
         if not logger:
-            logger = getLogger(f'AX25Connection[{str(self)}]')
+            logger = getLogger(f"AX25Connection[{str(self)}]")
         self._logger = logger
         self._incoming = Queue()
         self._state = AX25ConnectionState.DISCONNECTED
@@ -552,12 +577,16 @@ class AX25Connection():
         self._outstanding_frame_expires = 0
 
     def __str__(self) -> str:
-        return f'{self._local}<->{self._remote}@{str(self._client.id)}:{self._port}'
+        return f"{self._local}<->{self._remote}@{str(self._client.id)}:{self._port}"
 
     @staticmethod
-    def get_connection_id(local_callsign: str, remote_callsign: str, client_id: UUID, port: int) -> str:
-        return sha1(f'{local_callsign}<->{remote_callsign}@{str(client_id)}:{port}'.encode()).hexdigest()
-    
+    def get_connection_id(
+        local_callsign: str, remote_callsign: str, client_id: UUID, port: int
+    ) -> str:
+        return sha1(
+            f"{local_callsign}<->{remote_callsign}@{str(client_id)}:{port}".encode()
+        ).hexdigest()
+
     @property
     def connection_id(self):
         return sha1(str(self).encode()).hexdigest()
@@ -571,9 +600,7 @@ class AX25Connection():
 
     def send(self, frame: AX25Frame, priority: int = 5):
         client_frame = AX25ClientFrame(
-            axframe=frame,
-            port=self._port,
-            priority=priority
+            axframe=frame, port=self._port, priority=priority
         )
         self._client.queue_for_sending(client_frame=client_frame)
 
@@ -582,18 +609,18 @@ class AX25Connection():
         return self._state
 
     async def start(self):
-        self._logger.debug(f'Starting handling loop')
+        self._logger.debug("Starting handling loop")
         loop = asyncio.get_running_loop()
         self._active = True
         loop.create_task(self.handling_loop())
 
     def stop(self, abort: bool = False):
         if abort:
-            self._logger.warn('Abort requested for connection')
+            self._logger.warn("Abort requested for connection")
             self._active = False
         else:
-            self._logger.debug('Stop requested for connection')
-            #DO MORE HERE
+            self._logger.debug("Stop requested for connection")
+            # DO MORE HERE
             self._state = AX25ConnectionState.AWAITING_RELEASE
 
     async def handling_loop(self):
@@ -605,7 +632,7 @@ class AX25Connection():
     def _handle_incoming_frames(self):
         while not self._incoming.empty():
             frame = self._incoming.get_nowait()
-            self._logger.debug(f'Got frame {frame}')
+            self._logger.debug(f"Got frame {frame}")
             match self._state:
                 case AX25ConnectionState.DISCONNECTED:
                     self._disconnected_state_frame_handler(frame)
@@ -625,36 +652,60 @@ class AX25Connection():
         self._idle_timer_expires = monotonic_ns() + (self._idle_time * 1000000)
 
     def _reset_outstanding_frame_timer(self):
-        self._outstanding_frame_expires = monotonic_ns() + (self._outstanding_frame_time * 1000000)
+        self._outstanding_frame_expires = monotonic_ns() + (
+            self._outstanding_frame_time * 1000000
+        )
 
     def _disconnected_state_frame_handler(self, frame: AX25Frame):
         if AX25FrameType.UNN_DM in frame.control_field.frame_type:
-            self._logger.debug(f'Ignoring DM frame {str(frame.address_field)}')
+            self._logger.debug(f"Ignoring DM frame {str(frame.address_field)}")
         elif AX25FrameType.UNN_UI in frame.control_field.frame_type:
             if frame.control_field.poll_final:
-                self._logger.debug(f'Sending DM response to UI frame {str(frame.address_field)} with Poll/Final set')
+                self._logger.debug(
+                    f"Sending DM response to UI frame {str(frame.address_field)} with Poll/Final set"
+                )
                 frame = AX25FrameFactory.dm_response(axframe=frame, poll_final=True)
-                self._client.queue_for_sending(AX25ClientFrame(axframe=frame, port=self._port, priority=1))
-            self._logger.debug(f'Sending frame {str(frame.address_field)} to UI callbacks')
+                self._client.queue_for_sending(
+                    AX25ClientFrame(axframe=frame, port=self._port, priority=1)
+                )
+            self._logger.debug(
+                f"Sending frame {str(frame.address_field)} to UI callbacks"
+            )
             for callback in self._ui_callbacks:
                 callback(AX25Data.from_frame(frame))
         elif AX25FrameType.UNN_DISC in frame.control_field.frame_type:
-            self._logger.debug(f'Sending DM response to DISC frame {str(frame.address_field)}')
-            frame = AX25FrameFactory.dm_response(axframe=frame, poll_final=frame.control_field.poll_final)
-            self._client.queue_for_sending(AX25ClientFrame(axframe=frame, port=self._port, priority=1))
+            self._logger.debug(
+                f"Sending DM response to DISC frame {str(frame.address_field)}"
+            )
+            frame = AX25FrameFactory.dm_response(
+                axframe=frame, poll_final=frame.control_field.poll_final
+            )
+            self._client.queue_for_sending(
+                AX25ClientFrame(axframe=frame, port=self._port, priority=1)
+            )
         elif AX25FrameType.UNN_SABME in frame.control_field.frame_type:
-            self._logger.debug(f'Acknowledging SABME request {str(frame.address_field)}')
-            frame = AX25FrameFactory.ua_response(axframe=frame, poll_final=frame.control_field.poll_final)
-            self._client.queue_for_sending(AX25ClientFrame(axframe=frame, port=self._port, priority=1))
+            self._logger.debug(
+                f"Acknowledging SABME request {str(frame.address_field)}"
+            )
+            frame = AX25FrameFactory.ua_response(
+                axframe=frame, poll_final=frame.control_field.poll_final
+            )
+            self._client.queue_for_sending(
+                AX25ClientFrame(axframe=frame, port=self._port, priority=1)
+            )
             self._next_sequence = 0
             self._last_ack = 0
             self._last_recieved = 0
             self._reset_idle_timer()
             self._state = AX25ConnectionState.CONNECTED
         elif AX25FrameType.UNN_SABM in frame.control_field.frame_type:
-            self._logger.debug(f'Acknowledging SABM request {str(frame.address_field)}')
-            frame = AX25FrameFactory.ua_response(axframe=frame, poll_final=frame.control_field.poll_final)
-            self._client.queue_for_sending(AX25ClientFrame(axframe=frame, port=self._port, priority=1))
+            self._logger.debug(f"Acknowledging SABM request {str(frame.address_field)}")
+            frame = AX25FrameFactory.ua_response(
+                axframe=frame, poll_final=frame.control_field.poll_final
+            )
+            self._client.queue_for_sending(
+                AX25ClientFrame(axframe=frame, port=self._port, priority=1)
+            )
             self._next_sequence = 0
             self._last_ack = 0
             self._last_recieved = 0
@@ -663,15 +714,21 @@ class AX25Connection():
             self._window_size = 4
             self._reset_idle_timer()
             self._state = AX25ConnectionState.CONNECTED
-        elif frame.address_field.source.command_repeat_bit == True:
-            self._logger.debug(f'Sending DM response to command frame {str(frame.address_field)}')
-            frame = AX25FrameFactory.dm_response(axframe=frame, poll_final=frame.control_field.poll_final)
-            self._client.queue_for_sending(AX25ClientFrame(axframe=frame, port=self._port, priority=1))
+        elif frame.address_field.source.command_repeat_bit:
+            self._logger.debug(
+                f"Sending DM response to command frame {str(frame.address_field)}"
+            )
+            frame = AX25FrameFactory.dm_response(
+                axframe=frame, poll_final=frame.control_field.poll_final
+            )
+            self._client.queue_for_sending(
+                AX25ClientFrame(axframe=frame, port=self._port, priority=1)
+            )
 
     def _connected_state_frame_handler(self, frame: AX25Frame):
         if AX25FrameType.I_FRAME in frame.control_field.frame_type:
             if self._next_sequence >= self._last_ack + self._window_size:
-                self._logger.debug('Too many oustanding frames')
+                self._logger.debug("Too many oustanding frames")
 
 
 class AX25Listener(BaseModel):
@@ -679,10 +736,10 @@ class AX25Listener(BaseModel):
     incoming_callback: Callable[[AX25Connection], None]
 
 
-class AX25Controller():
+class AX25Controller:
     def __init__(self, logger: Logger = None, controller_id: UUID = uuid4()) -> None:
         if not logger:
-            logger = getLogger(f'AX25Controller[{controller_id}]')
+            logger = getLogger(f"AX25Controller[{controller_id}]")
         self._logger = logger
         self._id = controller_id
         self._connections: "Dict[str,AX25Connection]" = {}
@@ -702,13 +759,15 @@ class AX25Controller():
 
     def add_listener(self, listener: AX25Listener) -> None:
         if listener.callsign in [listen.callsign for listen in self._listeners]:
-            raise NameError(f'Listener with identity {listener.callsign} already exists.')
-        self._logger.info(f'Adding listener for callsign {listener.callsign}')
+            raise NameError(
+                f"Listener with identity {listener.callsign} already exists."
+            )
+        self._logger.info(f"Adding listener for callsign {listener.callsign}")
         self._listeners.append(listener)
 
     def remove_listener(self, callsign: str) -> None:
         if callsign in [listen.callsign for listen in self._listeners]:
-            self.logger.info(f'Removing listener for {callsign}')
+            self.logger.info(f"Removing listener for {callsign}")
             [listen.callsign for listen in self._listeners]
             self._listeners
 
@@ -730,11 +789,23 @@ class AX25Controller():
         if callable(callback):
             self._ui_callbacks.append(callback)
 
-    def remove_ui_callback(self, callback: Callable[[AX25Frame, AX25Client, int], None]):
+    def remove_ui_callback(
+        self, callback: Callable[[AX25Frame, AX25Client, int], None]
+    ):
         if callable(callback):
             self._ui_callbacks.remove(callback)
 
-    def send_ui_frame(self, local_callsign: str, remote_callsign: str, data: str, client: AX25Client, port: int = 0, priority: int = 5, path: List[str] = [], poll: bool = False):
+    def send_ui_frame(
+        self,
+        local_callsign: str,
+        remote_callsign: str,
+        data: str,
+        client: AX25Client,
+        port: int = 0,
+        priority: int = 5,
+        path: List[str] = [],
+        poll: bool = False,
+    ):
         source = AX25Address.from_callsign(local_callsign)
         dest = AX25Address.from_callsign(remote_callsign)
         send_path = []
@@ -742,80 +813,102 @@ class AX25Controller():
             send_path.append(AX25Address.from_callsign(call))
         addr_field = AX25AddressField(source=source, destination=dest, path=send_path)
         control = AX25ControlField(
-            frame_type=AX25FrameType.U_FRAME | AX25FrameType.UNN_UI,
-            poll_final=poll
+            frame_type=AX25FrameType.U_FRAME | AX25FrameType.UNN_UI, poll_final=poll
         )
         frame = AX25Frame(
             address_field=addr_field,
             control_field=control,
             pid=AX25PID.NONE,
-            information=data.encode()
+            information=data.encode(),
         )
         client_frame = AX25ClientFrame(axframe=frame, port=port, priority=priority)
-        self._logger.debug(f'Sending UI frame {frame} from client {client}:{port}')
+        self._logger.debug(f"Sending UI frame {frame} from client {client}:{port}")
         client.queue_for_sending(client_frame=client_frame)
 
     def data_recieved(self, axframe: AX25Frame, source: AX25Client, kiss_port: int):
-        connection_id = AX25Connection.get_connection_id(local_callsign=axframe.address_field.destination.call_with_ssid, remote_callsign=axframe.address_field.source.call_with_ssid, client_id=source.id, port=kiss_port)
-        self._logger.debug(f'Got frame {str(axframe.address_field)}')
+        connection_id = AX25Connection.get_connection_id(
+            local_callsign=axframe.address_field.destination.call_with_ssid,
+            remote_callsign=axframe.address_field.source.call_with_ssid,
+            client_id=source.id,
+            port=kiss_port,
+        )
+        self._logger.debug(f"Got frame {str(axframe.address_field)}")
         if connection_id in self._connections.keys():
             connection = self._connections[connection_id]
-            self._logger.debug(f'Sending frame {str(axframe.address_field)} to existing connection {str(connection)}')
+            self._logger.debug(
+                f"Sending frame {str(axframe.address_field)} to existing connection {str(connection)}"
+            )
             connection.recieve(axframe)
         elif axframe.control_field.frame_type & AX25FrameType.UNN_UI:
             if axframe.control_field.poll_final:
-                self._logger.debug(f'Sending DM response to UI frame {str(axframe.address_field)} with Poll/Final set')
+                self._logger.debug(
+                    f"Sending DM response to UI frame {str(axframe.address_field)} with Poll/Final set"
+                )
                 frame = AX25FrameFactory.dm_response(axframe=axframe, poll_final=True)
-                source.queue_for_sending(AX25ClientFrame(axframe=frame, port=kiss_port, priority=1))
-            self._logger.debug(f'Sending frame {str(axframe.address_field)} to UI callbacks')
+                source.queue_for_sending(
+                    AX25ClientFrame(axframe=frame, port=kiss_port, priority=1)
+                )
+            self._logger.debug(
+                f"Sending frame {str(axframe.address_field)} to UI callbacks"
+            )
             for callback in self._ui_callbacks:
                 callback(axframe, source, kiss_port)
-        elif axframe.address_field.destination.call_with_ssid in [listener.callsign for listener in self._listeners]:
+        elif axframe.address_field.destination.call_with_ssid in [
+            listener.callsign for listener in self._listeners
+        ]:
             listener = [listener for listener in self._listeners][0]
             connection = AX25Connection(
                 local_callsign=axframe.address_field.destination.call_with_ssid,
                 remote_callsign=axframe.address_field.source.call_with_ssid,
                 client=source,
-                port=kiss_port
+                port=kiss_port,
             )
-            self._logger.debug(f'Sending frame {str(axframe.address_field)} to new connection {str(connection)}')
+            self._logger.debug(
+                f"Sending frame {str(axframe.address_field)} to new connection {str(connection)}"
+            )
             connection.recieve(axframe)
             self._connections[connection.connection_id] = connection
             listener.incoming_callback(connection)
             loop = asyncio.get_running_loop()
             loop.create_task(connection.start())
         else:
-            self._logger.debug(f'Ignoring frame {str(axframe.address_field)}')
+            self._logger.debug(f"Ignoring frame {str(axframe.address_field)}")
 
     def start(self) -> None:
-        self._logger.info('Start requested. Starting handling loop')
+        self._logger.info("Start requested. Starting handling loop")
         loop = asyncio.get_event_loop()
         loop.create_task(self.handling_loop())
 
     def stop(self, abort=False):
         if abort:
-            self._logger.warn('Abort requested. Aborting all connections.')
+            self._logger.warn("Abort requested. Aborting all connections.")
             for connection in self._connections.values():
                 connection.stop(abort=True)
             self._active = False
         else:
-            self._logger.info('Stop requested')
+            self._logger.info("Stop requested")
             self._shutdown_requested = True
 
     async def handling_loop(self):
         while self._active:
             for connection in self._connections.values():
                 if not connection.active:
-                    self._logger.debug(f'Destroying inactive connection {str(connection)}')
+                    self._logger.debug(
+                        f"Destroying inactive connection {str(connection)}"
+                    )
                     self._connections.pop(connection.connection_id)
                     del connection
             gc.collect()
             if self._shutdown_requested:
                 for connection in self._connections.values():
-                    if connection.connection_state != AX25ConnectionState.AWAITING_RELEASE:
-                        self._logger.debug(f'Requesting graceful shutdown of connection {str(connection)}')
+                    if (
+                        connection.connection_state != AX25ConnectionState.AWAITING_RELEASE
+                    ):
+                        self._logger.debug(
+                            f"Requesting graceful shutdown of connection {str(connection)}"
+                        )
                         connection.stop()
                 if len(self._connections.items()) == 0:
-                    self._logger.info('Graceful shutdown complete.')
+                    self._logger.info("Graceful shutdown complete.")
                     return
             await asyncio.sleep(5)

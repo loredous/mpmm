@@ -29,24 +29,24 @@ if __name__ == "__main__":
         await coro
 
     def close():
-        print('Got Ctrl-C!')
+        print("Got Ctrl-C!")
         exit()
 
     async def local_recieve_callback(frame: bytes):
-        with open('kiss_data', 'a') as datafile:
+        with open("kiss_data", "a") as datafile:
             datafile.write(frame.hex())
-            datafile.write('\n')
+            datafile.write("\n")
 
     async def local_callback(frame: KISSFrame):
         aframe = AX25Frame.decode(frame)
-        with open('ax25_data', 'a') as datafile:
+        with open("ax25_data", "a") as datafile:
             datafile.write(aframe.json())
-            datafile.write('\n')
+            datafile.write("\n")
         print(aframe)
 
     basicConfig(level=DEBUG)
-    logger = getLogger('KISSTest')
-    logger.info('Starting KISS Test client')
+    logger = getLogger("KISSTest")
+    logger.info("Starting KISS Test client")
     client = KISSTCPClient("192.168.0.13:8001")
     client.decode_callback = local_callback
     client.receive_callback = local_recieve_callback

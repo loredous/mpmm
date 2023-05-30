@@ -93,7 +93,7 @@ class KISSFrame(BaseModel):
         frames = data.split(bytes([KISSCode.FEND.value]))
         decoded_frames = []
         for frame in frames:
-            if frame == b'':
+            if frame == b"":
                 continue
             decoded_type = frame[0]
             decoded_command = KISSCommand(decoded_type & 15)
@@ -110,27 +110,30 @@ class KISSFrame(BaseModel):
                         decoded_data.append(KISSCode.FESC.value)
                     case _:
                         decoded_data.append(byte)
-            decoded_frames.append(cls(data=bytes(decoded_data), command=decoded_command, port=decoded_port))
+            decoded_frames.append(
+                cls(
+                    data=bytes(decoded_data), command=decoded_command, port=decoded_port
+                )
+            )
         return decoded_frames
 
 
 class KISSClient(ABC):
-
     def __init__(self, address: str, logger=None):
         if not logger:
-            logger = getLogger(f'KISSClient[{address}]')
+            logger = getLogger(f"KISSClient[{address}]")
         self.logger = logger
-        self.logger.debug(f'Setting up KISS Client for address {address}')
+        self.logger.debug(f"Setting up KISS Client for address {address}")
         self.address = address
 
     async def receive_callback(self, frame: bytes):
-        self.logger.debug(f'Received: {frame}')
+        self.logger.debug(f"Received: {frame}")
 
     async def decode_callback(self, frame: KISSFrame):
-        self.logger.debug(f'Decoded: {frame.data}')
+        self.logger.debug(f"Decoded: {frame.data}")
 
     async def start_listen(self):
-        self.logger.debug('start_listen requested')
+        self.logger.debug("start_listen requested")
         await self.setup()
         self.base_loop = asyncio.get_running_loop()
         self._stop_requested = False
@@ -148,7 +151,9 @@ class KISSClient(ABC):
             if not self._running:
                 return
             await asyncio.sleep(1)
-        raise RuntimeError(f'Stop was requested on KISSClient[{self.address}] but failed to stop with {timeout}s timeout.')
+        raise RuntimeError(
+            f"Stop was requested on KISSClient[{self.address}] but failed to stop with {timeout}s timeout."
+        )
 
     @abstractmethod
     async def listen_loop(self):
@@ -169,15 +174,17 @@ class KISSClient(ABC):
 
 class KISSTCPClient(KISSClient):
     async def setup(self):
-        address_parts = self.address.split(':')
-        self.logger.debug(f'Opening TCP connection to {self.address}')
-        self.reader, self.writer = await asyncio.open_connection(address_parts[0], address_parts[1])
+        address_parts = self.address.split(":")
+        self.logger.debug(f"Opening TCP connection to {self.address}")
+        self.reader, self.writer = await asyncio.open_connection(
+            address_parts[0], address_parts[1]
+        )
 
     async def listen_loop(self):
         while True:
             if not self.reader:
-                self.logger.exception('listen_loop called without reader!')
-                raise RuntimeError('Issue in listen loop: reader is None')
+                self.logger.exception("listen_loop called without reader!")
+                raise RuntimeError("Issue in listen loop: reader is None")
             try:
                 async with asyncio.timeout(10):
                     data = await self.reader.read(32768)
@@ -185,7 +192,7 @@ class KISSTCPClient(KISSClient):
                         self.base_loop.create_task(self.receive_callback(data))
                         frames = KISSFrame.decode(data)
                         for frame in frames:
-                            self.logger.debug(f'Sending callback for [{frame}]')
+                            self.logger.debug(f"Sending callback for [{frame}]")
                             self.base_loop.create_task(self.decode_callback(frame))
             except TimeoutError:
                 pass
@@ -195,10 +202,10 @@ class KISSTCPClient(KISSClient):
             await asyncio.sleep(0.1)
 
     async def send(self, frame: KISSFrame):
-        self.logger.debug(f'Send requested for frame [{frame}]')
+        self.logger.debug(f"Send requested for frame [{frame}]")
         if not self.writer:
-            self.logger.exception('send called without writer!')
-            raise RuntimeError('Issue in send: writer is None')
+            self.logger.exception("send called without writer!")
+            raise RuntimeError("Issue in send: writer is None")
         self.writer.write(frame.encode())
 
     async def close(self):
@@ -208,5 +215,7 @@ class KISSTCPClient(KISSClient):
 
 
 if __name__ == "__main__":
-    test = KISSFrame.decode(b'\xc0\x00\xa6\xb0j\xa2\xac\xa8`\x9c`\x82\x9a\xb2@\xe8\xae\x82l\x92\x8c\x92\xf8\x9c`\x82\xaa\xb0@\xe2\xae\x92\x88\x8ad@\xe1\x03\xf0`pL}l!vv/`"HJ}_%\r\xc0')
+    test = KISSFrame.decode(
+        b'\xc0\x00\xa6\xb0j\xa2\xac\xa8`\x9c`\x82\x9a\xb2@\xe8\xae\x82l\x92\x8c\x92\xf8\x9c`\x82\xaa\xb0@\xe2\xae\x92\x88\x8ad@\xe1\x03\xf0`pL}l!vv/`"HJ}_%\r\xc0'
+    )
     pass

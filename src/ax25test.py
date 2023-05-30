@@ -29,21 +29,26 @@ if __name__ == "__main__":
         exit()
 
     def handle_connection(connection):
-        logger.info(f'Got callback for connection {connection}')
+        logger.info(f"Got callback for connection {connection}")
 
     async def pinger():
         while True:
             await asyncio.sleep(10)
-            controller.send_ui_frame('K0JLB', 'ID', 'Ping!', client=controller.clients[0])
+            controller.send_ui_frame(
+                "K0JLB", "ID", "Ping!", client=controller.clients[0]
+            )
+
     basicConfig(level=DEBUG)
-    logger = getLogger('KISSTest')
-    logger.info('Starting KISS Test client')
+    logger = getLogger("KISSTest")
+    logger.info("Starting KISS Test client")
     controller = AX25Controller()
     controller.start()
     kiss_client = KISSTCPClient("192.168.0.13:8001")
     controller.add_client(AX25Client(kiss_client))
-    controller.add_listener(AX25Listener(callsign='K0JLB-14', incoming_callback=handle_connection))
+    controller.add_listener(
+        AX25Listener(callsign="K0JLB-14", incoming_callback=handle_connection)
+    )
     loop = asyncio.get_event_loop()
-    #loop.create_task(pinger())
+    # loop.create_task(pinger())
     loop.add_signal_handler(sig=signal.SIGINT, callback=close)
     loop.run_forever()
