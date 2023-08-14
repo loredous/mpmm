@@ -15,8 +15,35 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from itertools import islice
+import time
+from typing import Iterator
 
 
-def chunk(value_list: list, chunk_size: int):
+def chunk(value_list: list, chunk_size: int) -> Iterator:
+    """Divide a list of items into chunks of a specific size. The final chunk may be smaller than chunk_size.
+
+    Args:
+        value_list (list): List of items to divide
+        chunk_size (int): Max size of each chunk
+
+    Returns:
+        Iterator: Iterator that will return chunks of the original list
+    """    
     value_list = iter(value_list)
     return iter(lambda: tuple(islice(value_list, chunk_size)), ())
+
+def get_time_ms() -> int:
+    """Get current system time since epoch in milliseconds
+
+    Returns:
+        int: Current system time in milliseconds
+    """    
+    return int(time.monotonic_ns() / 1000000)
+
+def get_time() -> int:
+    """Get current system time since epoch in seconds
+
+    Returns:
+        int: Current system time since epoch in seconds
+    """    
+    return int(time.monotonic_ns() / 1000000000)
