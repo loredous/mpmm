@@ -18,12 +18,15 @@ from abc import ABC, abstractmethod
 import asyncio
 from enum import Enum
 from logging import getLogger
+import uuid
 from pydantic import BaseModel, validator
 
 from typing import List, Self
+from shared import utils
 
 
 class KISSCommand(Enum):
+    """Enum of KISS Command types"""    
     DATA_FRAME = 0
     TX_DELAY = 1
     PERSISTENCE = 2
@@ -35,6 +38,7 @@ class KISSCommand(Enum):
 
 
 class KISSCode(Enum):
+    """KISS special frame markers"""
     FEND = 0xC0
     FESC = 0xDB
     TFEND = 0xDC
@@ -42,12 +46,32 @@ class KISSCode(Enum):
 
 
 class KISSFrame(BaseModel):
+    """
+    Model representing a single KISS frame
+
+    Args:
+        data (bytes): Data field of KISS frame
+        command (KISSCommand): Frame type identifier
+        port (int): KISS TNC port associated with this frame
+    """
     data: bytes
     command: KISSCommand
     port: int
 
     @validator("port")
-    def is_valid_port(cls, v):
+    def is_valid_port(cls, v: int) -> int:
+        """
+        Validate value for KISS port number. Valid port IDs are between 0 and 16 inclusive
+
+        Args:
+            v (int): Value to check
+
+        Returns:
+            int: Validated KISS port value
+
+        Raises:
+            ValueError
+        """
         if v < 0 or v > 16:
             return ValueError("KISS port number must be between 0 and 16 inclusive")
         return v
@@ -56,7 +80,8 @@ class KISSFrame(BaseModel):
         """
         Get the byte representation of the KISSFrame
 
-        :returns: raw bytes representing the KISS frame
+        Returns:
+            bytes: Raw bytes representing the KISS frame
         """
         # KISS frame starts with FEND
         kiss_frame = bytes([KISSCode.FEND.value])
@@ -86,9 +111,11 @@ class KISSFrame(BaseModel):
         """
         Decode raw bytes of one or more KISS frames into KISSFrame objects
 
-        :param data: Raw Bytes representing a KISS frame
+        Args:
+            data (bytes): Raw Bytes representing a KISS frame
 
-        :returns: List of KISSFrame objects decoded from bytes
+        Returns:
+            List[Self]: List of KISSFrame objects decoded from bytes
         """
         frames = data.split(bytes([KISSCode.FEND.value]))
         decoded_frames = []
@@ -119,12 +146,21 @@ class KISSFrame(BaseModel):
 
 
 class KISSClient(ABC):
-    def __init__(self, address: str, logger=None):
+    """
+    Abstract base model representing a generic KISS client
+    """    
+    def __init__(self, logger=None):
+        """
+        Initialize the basic KISS client needs including logging. Default logger name is set to 'KISSClient[<classname>-<uuid>]'
+
+        Args:
+            logger (Logger, optional): Precreated logger to use for client. Defaults to None.
+        """
+        if not hasattr(self, "logger_name"):
+            self.logger_name = f'{self.__class__.__name__}-{uuid.uuid4()}'
         if not logger:
-            logger = getLogger(f"KISSClient[{address}]")
+            logger = getLogger(f"KISSClient[{self.logger_name}]")
         self.logger = logger
-        self.logger.debug(f"Setting up KISS Client for address {address}")
-        self.address = address
 
     async def receive_callback(self, frame: bytes):
         self.logger.debug(f"Received: {frame}")
@@ -173,6 +209,12 @@ class KISSClient(ABC):
 
 
 class KISSTCPClient(KISSClient):
+    async def __init__(self, address: str, logger=None):
+        super().__init__(logger)
+        self.address = address
+        self.logger.debug(f"Setting up KISS Client for address {address}")
+
+
     async def setup(self):
         address_parts = self.address.split(":")
         self.logger.debug(f"Opening TCP connection to {self.address}")
@@ -213,6 +255,62 @@ class KISSTCPClient(KISSClient):
             self.writer.close()
             await self.writer.wait_closed()
 
+class KISSMockClientMessage(BaseModel):
+    """Configuration class for the KISSMockClient. Allows for either one-shot or repeated injection of messages into
+
+    Args:
+        interval(int): Interval in seconds between injecting instances of this message (or time after start for one-shot)
+        repeat(bool): Should this message be repeated every interval. False means "Only send this message once"
+        frame(bytes): KISS Frame to send
+        next_send(int): Next epoch time to send this message. Default -1 to send at start + interval
+    """    
+    interval: int = 60
+    repeat: bool = True 
+    next_send: int = -1
+    frame: KISSFrame 
+
+class KISSMockClient(KISSClient):
+    """Mock KISS client for testing use
+
+    Args:
+        messages(list[KISSMockClientMessage]): List of Mock client messages to use. Default is none.
+        loopback(bool): Should the client act as a loopback by adding all sent frames to the local recieve queue
+        logger(Logger): Python logger to use (Default is to create a new instance for this client)
+    """    
+    def __init__(self, messages: list[KISSMockClientMessage] = [], loopback=False, logger=None):
+        super().__init__(logger)
+        self._Mock_messages = messages
+        self._loopback = loopback
+
+
+    async def listen_loop(self):
+        while True:
+            try:
+                now = utils.get_time()
+                async with asyncio.timeout(10):
+                    for message in self._Mock_messages:
+                        if message.next_send <= now:
+                            self.logger.debug(f'Injecting KISS Frame {message.frame}')
+                            self.base_loop.create_task(self.decode_callback(message.frame))
+                            message.next_send = now + message.interval
+            except TimeoutError:
+                pass
+            if self._stop_requested:
+                self._running = False
+                return
+            await asyncio.sleep(0.1)
+
+    async def setup(self):
+        pass
+        
+
+    async def close(self):
+        pass
+
+    async def send(self, frame: KISSFrame):
+        self.logger.debug(f'KISS mock client got request to send frame {frame}. Loopback is {self._loopback}')
+        if self._loopback:
+            self.base_loop.create_task(self.decode_callback(frame))
 
 if __name__ == "__main__":
     test = KISSFrame.decode(

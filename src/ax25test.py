@@ -17,7 +17,7 @@
 import asyncio
 from logging import DEBUG, basicConfig, getLogger
 
-from shared.kiss import KISSTCPClient
+from shared.kiss import KISSMockClient
 from shared.ax25 import AX25Client, AX25Controller, AX25Listener
 
 
@@ -35,20 +35,25 @@ if __name__ == "__main__":
         while True:
             await asyncio.sleep(10)
             controller.send_ui_frame(
-                "K0JLB", "ID", "Ping!", client=controller.clients[0]
+                "K0JLB-1", "ID", "Hello HRV!", client=controller.clients[0]
             )
+
+    def got_ui(frame, client, port):
+        logger.info(f'Got UI Frame: {frame}')
 
     basicConfig(level=DEBUG)
     logger = getLogger("KISSTest")
     logger.info("Starting KISS Test client")
     controller = AX25Controller()
     controller.start()
-    kiss_client = KISSTCPClient("192.168.0.13:8001")
+    kiss_client = KISSMockClient(loopback=True)
     controller.add_client(AX25Client(kiss_client))
-    controller.add_listener(
-        AX25Listener(callsign="K0JLB-14", incoming_callback=handle_connection)
-    )
+    controller.add_ui_callback(got_ui)
+    # controller.add_listener(
+    #     AX25Listener(callsign="K0JLB-14", incoming_callback=handle_connection)
+    # )
     loop = asyncio.get_event_loop()
-    # loop.create_task(pinger())
-    loop.add_signal_handler(sig=signal.SIGINT, callback=close)
+
+    loop.create_task(pinger())
+    #loop.add_signal_handler(sig=signal.SIGINT, callback=close)
     loop.run_forever()
