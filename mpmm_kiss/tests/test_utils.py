@@ -19,32 +19,9 @@ import sys
 import base64
 from unittest import mock
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+from mpmm_kiss.utils import get_time_ms, get_time
 
-from shared.utils import  *
-
-def test_chunk_util():
-    # Arrange
-    CHUNK_LENGTH = 3
-    TEST_LIST = [1,2,3,4,5,6,7,8,9,10]
-    EXPECTED_CHUNKS = [
-        [1,2,3],
-        [4,5,6],
-        [7,8,9],
-        [10]
-    ]
-    
-    # Act
-    result = chunk(TEST_LIST, CHUNK_LENGTH)
-
-    # Assert
-    assert isinstance(result,Iterator)
-    for result_expected in zip(result,EXPECTED_CHUNKS):
-        assert len(result[0]) <= CHUNK_LENGTH
-        assert result[0] == result[1]
-
-
-@mock.patch("shared.utils.time.monotonic_ns")
+@mock.patch("mpmm_kiss.utils.time.monotonic_ns")
 def test_get_time_ms(MOCK_TIME):
     # Arrange
     MOCK_TIME.return_value = 108967125000000
@@ -57,7 +34,7 @@ def test_get_time_ms(MOCK_TIME):
     assert isinstance(result,int)
     assert result == EXPECTED_RESULT
 
-@mock.patch("shared.utils.time.monotonic_ns")
+@mock.patch("mpmm_kiss.utils.time.monotonic_ns")
 def test_get_time(MOCK_TIME):
     # Arrange
     MOCK_TIME.return_value = 108967125000000

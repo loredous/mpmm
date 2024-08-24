@@ -17,40 +17,43 @@
 import asyncio
 from logging import DEBUG, basicConfig, getLogger
 
-from shared.kiss import KISSFrame, KISSTCPClient
-from shared.ax25 import AX25Frame
+from shared.kiss import KISSMockClient
+from mpmm_ax25.src.ax25.ax25 import AX25Client, AX25Controller, AX25Listener
 
 
 if __name__ == "__main__":
     import signal
 
-    async def delay(coro, seconds):
-        await asyncio.sleep(30)
-        await coro
-
     def close():
-        print("Got Ctrl-C!")
+        controller.stop()
         exit()
 
-    async def local_recieve_callback(frame: bytes):
-        with open("kiss_data", "a") as datafile:
-            datafile.write(frame.hex())
-            datafile.write("\n")
+    def handle_connection(connection):
+        logger.info(f"Got callback for connection {connection}")
 
-    async def local_callback(frame: KISSFrame):
-        aframe = AX25Frame.decode(frame)
-        with open("ax25_data", "a") as datafile:
-            datafile.write(aframe.json())
-            datafile.write("\n")
-        print(aframe)
+    async def pinger():
+        while True:
+            await asyncio.sleep(10)
+            controller.send_ui_frame(
+                "K0JLB-1", "ID", "Hello HRV!", client=controller.clients[0]
+            )
+
+    def got_ui(frame, client, port):
+        logger.info(f'Got UI Frame: {frame}')
 
     basicConfig(level=DEBUG)
     logger = getLogger("KISSTest")
     logger.info("Starting KISS Test client")
-    client = KISSTCPClient("192.168.0.13:8001")
-    client.decode_callback = local_callback
-    client.receive_callback = local_recieve_callback
+    controller = AX25Controller()
+    controller.start()
+    kiss_client = KISSMockClient(loopback=True)
+    controller.add_client(AX25Client(kiss_client))
+    controller.add_ui_callback(got_ui)
+    # controller.add_listener(
+    #     AX25Listener(callsign="K0JLB-14", incoming_callback=handle_connection)
+    # )
     loop = asyncio.get_event_loop()
-    loop.create_task(client.start_listen())
-    loop.add_signal_handler(signal.SIGINT, close)
+
+    loop.create_task(pinger())
+    #loop.add_signal_handler(sig=signal.SIGINT, callback=close)
     loop.run_forever()

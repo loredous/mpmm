@@ -1,5 +1,5 @@
 from shared.aprs import APRSDecoder
-from shared.ax25 import AX25Frame
+from mpmm_ax25.src.ax25.ax25 import AX25Frame
 
 
 frame = AX25Frame.parse_raw(

@@ -14,13 +14,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import os
-import sys
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
-
-
-from shared.kiss import KISSFrame, KISSCommand  # noqa: E402
+from hypothesis import given, note, strategies 
+from mpmm_kiss.kiss_frame import KISSFrame, KISSCommand
 
 
 def test_simple_decode():
@@ -115,3 +110,28 @@ def test_complex_encode():
     # Assert
     assert isinstance(result, bytes)
     assert result == bytes(expected_frame)
+
+
+@given(port=strategies.integers(min_value=0, max_value=15), command=strategies.sampled_from(KISSCommand), data=strategies.binary())
+
+def test_encode_decode(port, command, data):
+    # Arrange
+    frame_object = KISSFrame(port=port, command=command, data=data)
+
+    # Act
+    encoded = frame_object.encode()
+    result = KISSFrame.decode(encoded)
+    note(f"Encoded: {encoded}")
+
+    # Assert
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert isinstance(result[0], KISSFrame)
+    if command == KISSCommand.RETURN:
+        assert result[0].port == 0
+        assert result[0].command == command
+        assert result[0].data == b''
+    else:
+        assert result[0].port == port
+        assert result[0].command == command
+        assert result[0].data == data

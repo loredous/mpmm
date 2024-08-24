@@ -4,4 +4,7 @@
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
+    "python.analysis.extraPaths": [
+        "./mpmm_ax25/src"
+    ],
 }

@@ -19,130 +19,12 @@ import asyncio
 from enum import Enum
 from logging import getLogger
 import uuid
-from pydantic import BaseModel, validator
+from dataclasses import dataclass
 
-from typing import List, Self
-from shared import utils
-
-
-class KISSCommand(Enum):
-    """Enum of KISS Command types"""    
-    DATA_FRAME = 0
-    TX_DELAY = 1
-    PERSISTENCE = 2
-    SLOT_TIME = 3
-    TX_TAIL = 4
-    FULL_DUPLEX = 5
-    SET_HARDWARE = 6
-    RETURN = 255
+import utils
+from mpmm_kiss.kiss_frame import KISSFrame
 
 
-class KISSCode(Enum):
-    """KISS special frame markers"""
-    FEND = 0xC0
-    FESC = 0xDB
-    TFEND = 0xDC
-    TFESC = 0xDD
-
-
-class KISSFrame(BaseModel):
-    """
-    Model representing a single KISS frame
-
-    Args:
-        data (bytes): Data field of KISS frame
-        command (KISSCommand): Frame type identifier
-        port (int): KISS TNC port associated with this frame
-    """
-    data: bytes
-    command: KISSCommand
-    port: int
-
-    @validator("port")
-    def is_valid_port(cls, v: int) -> int:
-        """
-        Validate value for KISS port number. Valid port IDs are between 0 and 16 inclusive
-
-        Args:
-            v (int): Value to check
-
-        Returns:
-            int: Validated KISS port value
-
-        Raises:
-            ValueError
-        """
-        if v < 0 or v > 16:
-            return ValueError("KISS port number must be between 0 and 16 inclusive")
-        return v
-
-    def encode(self) -> bytes:
-        """
-        Get the byte representation of the KISSFrame
-
-        Returns:
-            bytes: Raw bytes representing the KISS frame
-        """
-        # KISS frame starts with FEND
-        kiss_frame = bytes([KISSCode.FEND.value])
-
-        # Add the command and port
-        type_indicator = self.command.value | self.port << 4
-        kiss_frame += type_indicator.to_bytes()
-
-        # Encode each byte of the frame
-        for byte in self.data:
-            # If the byte is a KISS Frame End code, escape it
-            if byte == KISSCode.FEND.value:
-                kiss_frame += bytes([KISSCode.FESC.value, KISSCode.TFEND.value])
-            # If the byte is a KISS Frame Escape code, escape it
-            elif byte == KISSCode.FESC.value:
-                kiss_frame += bytes([KISSCode.FESC.value, KISSCode.TFESC.value])
-            # Otherwise, just add the byte to the KISS frame
-            else:
-                kiss_frame += byte.to_bytes()
-
-        # End the KISS frame with FEND
-        kiss_frame += bytes([KISSCode.FEND.value])
-        return kiss_frame
-
-    @classmethod
-    def decode(cls, data: bytes) -> List[Self]:
-        """
-        Decode raw bytes of one or more KISS frames into KISSFrame objects
-
-        Args:
-            data (bytes): Raw Bytes representing a KISS frame
-
-        Returns:
-            List[Self]: List of KISSFrame objects decoded from bytes
-        """
-        frames = data.split(bytes([KISSCode.FEND.value]))
-        decoded_frames = []
-        for frame in frames:
-            if frame == b"":
-                continue
-            decoded_type = frame[0]
-            decoded_command = KISSCommand(decoded_type & 15)
-            decoded_port = decoded_type & 240 >> 4
-
-            decoded_data = []
-            for byte in frame[1:]:
-                match byte:
-                    case KISSCode.FESC.value:
-                        continue
-                    case KISSCode.TFEND.value:
-                        decoded_data.append(KISSCode.FEND.value)
-                    case KISSCode.TFESC.value:
-                        decoded_data.append(KISSCode.FESC.value)
-                    case _:
-                        decoded_data.append(byte)
-            decoded_frames.append(
-                cls(
-                    data=bytes(decoded_data), command=decoded_command, port=decoded_port
-                )
-            )
-        return decoded_frames
 
 
 class KISSClient(ABC):
@@ -255,7 +137,8 @@ class KISSTCPClient(KISSClient):
             self.writer.close()
             await self.writer.wait_closed()
 
-class KISSMockClientMessage(BaseModel):
+@dataclass
+class KISSMockClientMessage():
     """Configuration class for the KISSMockClient. Allows for either one-shot or repeated injection of messages into
 
     Args:
@@ -311,9 +194,3 @@ class KISSMockClient(KISSClient):
         self.logger.debug(f'KISS mock client got request to send frame {frame}. Loopback is {self._loopback}')
         if self._loopback:
             self.base_loop.create_task(self.decode_callback(frame))
-
-if __name__ == "__main__":
-    test = KISSFrame.decode(
-        b'\xc0\x00\xa6\xb0j\xa2\xac\xa8`\x9c`\x82\x9a\xb2@\xe8\xae\x82l\x92\x8c\x92\xf8\x9c`\x82\xaa\xb0@\xe2\xae\x92\x88\x8ad@\xe1\x03\xf0`pL}l!vv/`"HJ}_%\r\xc0'
-    )
-    pass

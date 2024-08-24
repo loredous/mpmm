@@ -16,7 +16,7 @@
 
 from abc import ABC
 from typing import Union
-from shared.ax25 import AX25Frame
+from mpmm_ax25.src.ax25.ax25 import AX25Frame
 from pydantic import BaseModel
 from enum import Enum
 
