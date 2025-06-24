@@ -2,8 +2,8 @@
 from enum import Enum, Flag
 from dataclasses import dataclass, field
 from typing import List, Optional, Self, Tuple, Union
-from mpmm_ax25.utils import chunk
-from mpmm_kiss.kiss_frame import KISSFrame
+from ax25.utils import chunk
+from kiss.frame import KISSFrame
 
 class AX25PID(Enum):
     NONE = 0x00

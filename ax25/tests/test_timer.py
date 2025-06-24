@@ -1,6 +1,6 @@
 import asyncio
 import pytest
-from mpmm_ax25.timer import Timer, TimerResult, TimerState
+from ax25.timer import Timer, TimerResult, TimerState
 
 @pytest.mark.asyncio
 async def test_timer_setup():

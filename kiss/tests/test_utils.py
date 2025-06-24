@@ -14,14 +14,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import os
-import sys
-import base64
 from unittest import mock
 
-from mpmm_kiss.utils import get_time_ms, get_time
+from kiss.utils import get_time_ms, get_time
 
-@mock.patch("mpmm_kiss.utils.time.monotonic_ns")
+@mock.patch("kiss.utils.time.monotonic_ns")
 def test_get_time_ms(MOCK_TIME):
     # Arrange
     MOCK_TIME.return_value = 108967125000000
@@ -34,7 +31,7 @@ def test_get_time_ms(MOCK_TIME):
     assert isinstance(result,int)
     assert result == EXPECTED_RESULT
 
-@mock.patch("mpmm_kiss.utils.time.monotonic_ns")
+@mock.patch("kiss.utils.time.monotonic_ns")
 def test_get_time(MOCK_TIME):
     # Arrange
     MOCK_TIME.return_value = 108967125000000

@@ -1,8 +1,9 @@
 import asyncio
 import pytest
-from mpmm_ax25.ax25_connection import AX25Connection, AX25ConnectionState
-from mpmm_ax25.ax25_frame import AX25Address, AX25AddressField, AX25ControlField, AX25Frame, AX25FrameType, AX25Modulo
-from mpmm_ax25.timer import TimerState
+import pytest_asyncio
+from ax25.connection import AX25Connection, AX25ConnectionState
+from ax25.frame import AX25Address, AX25AddressField, AX25ControlField, AX25Frame, AX25FrameType, AX25Modulo
+from ax25.timer import TimerState
 from hypothesis import given, note, strategies as st
 
 @pytest.mark.asyncio
@@ -18,7 +19,7 @@ async def test_create_ax25_connection():
     assert conn.local_address == local_address
     assert conn.state == AX25ConnectionState.DISCONNECTED
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def ax25_connection():
     local_address = AX25Address(callsign="K0JLB", ssid="9")
     return AX25Connection(local_address=local_address)
@@ -28,7 +29,6 @@ async def ax25_connection():
 @pytest.mark.asyncio
 async def test_basic_connection_setup(ax25_connection):
     # Arrange
-    ax25_connection = await ax25_connection
     remote_address = AX25Address(callsign="NOCALL", ssid="15")
     local_address = ax25_connection.local_address
     sabm_frame = AX25Frame(address_field=AX25AddressField(source=remote_address, destination=local_address), control_field=AX25ControlField(frame_type=AX25FrameType.UNN_SABM | AX25FrameType.U_FRAME, poll_final=False), pid=0)
@@ -48,7 +48,6 @@ async def test_basic_connection_setup(ax25_connection):
 @pytest.mark.asyncio
 async def test_connection_setup_modulo_mismatch_sabme(ax25_connection):
     # Arrange
-    ax25_connection = await ax25_connection
     ax25_connection.modulo = AX25Modulo.MOD_8
     remote_address = AX25Address(callsign="NOCALL", ssid="15")
     local_address = ax25_connection.local_address
@@ -67,7 +66,6 @@ async def test_connection_setup_modulo_mismatch_sabme(ax25_connection):
 @pytest.mark.asyncio
 async def test_connection_setup_modulo_mismatch_sabm(ax25_connection):
     # Arrange
-    ax25_connection = await ax25_connection
     ax25_connection.modulo = AX25Modulo.MOD_128
     remote_address = AX25Address(callsign="NOCALL", ssid="15")
     local_address = ax25_connection.local_address
@@ -86,7 +84,6 @@ async def test_connection_setup_modulo_mismatch_sabm(ax25_connection):
 @pytest.mark.asyncio
 async def test_disconnected_UI_handling_poll(ax25_connection):
     # Arrange
-    ax25_connection = await ax25_connection
     remote_address = AX25Address(callsign="NOCALL", ssid="15")
     local_address = ax25_connection.local_address
     ui_frame = AX25Frame(address_field=AX25AddressField(source=remote_address, destination=local_address), control_field=AX25ControlField(frame_type=AX25FrameType.UNN_UI | AX25FrameType.U_FRAME, poll_final=True), pid=0)
@@ -103,7 +100,6 @@ async def test_disconnected_UI_handling_poll(ax25_connection):
 @pytest.mark.asyncio
 async def test_disconnected_UI_handling(ax25_connection):
     # Arrange
-    ax25_connection = await ax25_connection
     remote_address = AX25Address(callsign="NOCALL", ssid="15")
     local_address = ax25_connection.local_address
     ui_frame = AX25Frame(address_field=AX25AddressField(source=remote_address, destination=local_address), control_field=AX25ControlField(frame_type=AX25FrameType.UNN_UI | AX25FrameType.U_FRAME, poll_final=False), pid=0)
@@ -119,7 +115,6 @@ async def test_disconnected_UI_handling(ax25_connection):
 @pytest.mark.asyncio
 async def test_disconnected_DISC_handling(ax25_connection):
     # Arrange
-    ax25_connection = await ax25_connection
     remote_address = AX25Address(callsign="NOCALL", ssid="15")
     local_address = ax25_connection.local_address
     disc_frame = AX25Frame(address_field=AX25AddressField(source=remote_address, destination=local_address), control_field=AX25ControlField(frame_type=AX25FrameType.UNN_DISC | AX25FrameType.U_FRAME, poll_final=True), pid=0)
@@ -139,7 +134,6 @@ async def test_disconnected_DISC_handling(ax25_connection):
 @pytest.mark.asyncio
 async def test_awaiting_connection_sabm_handling(ax25_connection):
     # Arrange
-    ax25_connection = await ax25_connection
     ax25_connection.state = AX25ConnectionState.AWAITING_CONNECTION
     remote_address = AX25Address(callsign="NOCALL", ssid="15")
     local_address = ax25_connection.local_address
@@ -158,7 +152,6 @@ async def test_awaiting_connection_sabm_handling(ax25_connection):
 @pytest.mark.asyncio
 async def test_awaiting_connection_sabme_handling(ax25_connection):
     # Arrange
-    ax25_connection = await ax25_connection
     ax25_connection.state = AX25ConnectionState.AWAITING_CONNECTION
     remote_address = AX25Address(callsign="NOCALL", ssid="15")
     local_address = ax25_connection.local_address
@@ -177,7 +170,6 @@ async def test_awaiting_connection_sabme_handling(ax25_connection):
 @pytest.mark.asyncio
 async def test_awaiting_connection_disc_handling(ax25_connection):
     # Arrange
-    ax25_connection = await ax25_connection
     ax25_connection.state = AX25ConnectionState.AWAITING_CONNECTION
     remote_address = AX25Address(callsign="NOCALL", ssid="15")
     local_address = ax25_connection.local_address
@@ -202,7 +194,6 @@ async def test_awaiting_connection_ui_handling(ax25_connection):
         global HANDLER_OUTPUT
         HANDLER_OUTPUT.append(frame)
 
-    ax25_connection = await ax25_connection
     ax25_connection.state = AX25ConnectionState.AWAITING_CONNECTION
     ax25_connection.add_ui_handler(ui_handler)
     remote_address = AX25Address(callsign="NOCALL", ssid="15")
@@ -224,7 +215,6 @@ async def test_awaiting_connection_ui_handling(ax25_connection):
 @pytest.mark.asyncio
 async def test_awaiting_connection_dm_handling(ax25_connection):
     # Arrange
-    ax25_connection = await ax25_connection
     ax25_connection.state = AX25ConnectionState.AWAITING_CONNECTION
     remote_address = AX25Address(callsign="NOCALL", ssid="15")
     local_address = ax25_connection.local_address
@@ -243,7 +233,6 @@ async def test_awaiting_connection_dm_handling(ax25_connection):
 @pytest.mark.asyncio
 async def test_awaiting_connection_ua_handling(ax25_connection):
     # Arrange
-    ax25_connection = await ax25_connection
     ax25_connection.state = AX25ConnectionState.AWAITING_CONNECTION
     remote_address = AX25Address(callsign="NOCALL", ssid="15")
     local_address = ax25_connection.local_address
@@ -263,7 +252,6 @@ async def test_awaiting_connection_ua_handling(ax25_connection):
 @pytest.mark.asyncio
 async def test_awaiting_release_sabm_handling(ax25_connection):
     # Arrange
-    ax25_connection = await ax25_connection
     ax25_connection.state = AX25ConnectionState.AWAITING_RELEASE
     remote_address = AX25Address(callsign="NOCALL", ssid="15")
     local_address = ax25_connection.local_address
@@ -283,7 +271,6 @@ async def test_awaiting_release_sabm_handling(ax25_connection):
 @pytest.mark.asyncio
 async def test_awaiting_release_disc_handling(ax25_connection):
     # Arrange
-    ax25_connection = await ax25_connection
     ax25_connection.state = AX25ConnectionState.AWAITING_RELEASE
     remote_address = AX25Address(callsign="NOCALL", ssid="15")
     local_address = ax25_connection.local_address
@@ -309,7 +296,6 @@ async def test_awaiting_release_ui_handling(ax25_connection):
         global HANDLER_OUTPUT
         HANDLER_OUTPUT.append(frame)
 
-    ax25_connection = await ax25_connection
     ax25_connection.state = AX25ConnectionState.AWAITING_RELEASE
     ax25_connection.add_ui_handler(ui_handler)
     remote_address = AX25Address(callsign="NOCALL", ssid="15")
@@ -355,7 +341,6 @@ async def test_awaiting_release_s_handling(frame_type,pf):
 @pytest.mark.asyncio
 async def test_awaiting_release_ua_handling(ax25_connection):
     # Arrange
-    ax25_connection = await ax25_connection
     ax25_connection.state = AX25ConnectionState.AWAITING_RELEASE
     remote_address = AX25Address(callsign="NOCALL", ssid="15")
     local_address = ax25_connection.local_address
@@ -373,7 +358,6 @@ async def test_awaiting_release_ua_handling(ax25_connection):
 @pytest.mark.asyncio
 async def test_awaiting_release_dm_handling(ax25_connection):
     # Arrange
-    ax25_connection = await ax25_connection
     ax25_connection.state = AX25ConnectionState.AWAITING_RELEASE
     remote_address = AX25Address(callsign="NOCALL", ssid="15")
     local_address = ax25_connection.local_address

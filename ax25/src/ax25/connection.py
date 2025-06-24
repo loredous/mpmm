@@ -1,11 +1,11 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Coroutine, Optional
+from typing import Callable, Coroutine, Optional, Awaitable
 from asyncio import AbstractEventLoop, get_running_loop, Task
 from queue import Queue
 
-from mpmm_ax25.ax25_frame import AX25Address, AX25Frame, AX25FrameFactory, AX25FrameType, AX25Modulo
-from mpmm_ax25.timer import Timer, TimerResult, TimerState
+from ax25.frame import AX25Address, AX25Frame, AX25FrameFactory, AX25FrameType, AX25Modulo
+from ax25.timer import Timer, TimerResult, TimerState
 
 from logging import Logger, getLogger
 
@@ -28,7 +28,7 @@ class AX25Connection:
     i_frame_timeout: float = 10.0 # I-Frame Timeout in seconds
     keepalive_timeout: float = 30.0 # Keepalive Timeout in seconds
     outgoing_frames: Queue[AX25Frame] = field(default_factory=Queue) # Queue of outgoing frames
-    _ui_handlers: list[Coroutine[AX25Frame, None, None]] = field(default_factory=list) # List of UI Frame Handlers  
+    _ui_handlers: list[Callable[[AX25Frame],Awaitable[None]]] = field(default_factory=list) # List of UI Frame Handlers  
     peer_busy: bool = False # Peer Busy State
 
     ## Sequence Tracking Data
@@ -37,8 +37,8 @@ class AX25Connection:
     ack_sequence_number: int = 0 # Acknowledge State Variable - V(A)
 
     ## Timers
-    _outstanding_i_frame_timer: Timer = field(default=None,init=False) # Timer for outstanding I-Frames - T1
-    _keepalive_timer: Timer = field(default=None,init=False) # Timer for Keepalive - T3
+    _outstanding_i_frame_timer: Timer = field(init=False) # Timer for outstanding I-Frames - T1
+    _keepalive_timer: Timer = field(init=False) # Timer for Keepalive - T3
 
     ## Logging
     logger: Logger = getLogger(__name__)
@@ -48,10 +48,13 @@ class AX25Connection:
 
 
     def __post_init__(self):
-        self._outstanding_i_frame_timer = Timer(self._on_outstanding_i_frame_timeout, timeout=self.i_frame_timeout)
-        self._keepalive_timer = Timer(self._on_keepalive_timeout, timeout=self.keepalive_timeout)
-        self._reset_state()
+        self._outstanding_i_frame_timer = Timer(callback=self._on_outstanding_i_frame_timeout, timeout=self.i_frame_timeout)
+        self._keepalive_timer = Timer(callback=self._on_keepalive_timeout, timeout=self.keepalive_timeout)
         self.logger.info(f"AX25 Connection Initialized: {self}")
+        self.outgoing_frames = Queue()
+        self.sequence_number = 0
+        self.receive_sequence_number = 0
+        self.ack_sequence_number = 0
 
     async def _on_outstanding_i_frame_timeout(self, timer: Timer, result: TimerResult):
         self.logger.debug(f"Outstanding I-Frame Timer Stopped: {result.value}")
@@ -59,11 +62,11 @@ class AX25Connection:
     async def _on_keepalive_timeout(self, timer: Timer, result: TimerResult):
         self.logger.debug(f"Keepalive Timer Stopped: {result.value}")
 
-    def _reset_state(self, discard_outgoing_frames: bool = True):
-        if self._outstanding_i_frame_timer.state == TimerState.RUNNING:
-            self._outstanding_i_frame_timer.stop()
-        if self._keepalive_timer.state == TimerState.RUNNING:
-            self._keepalive_timer.stop()
+    async def _reset_state(self, discard_outgoing_frames: bool = True):
+        if self._outstanding_i_frame_timer and self._outstanding_i_frame_timer.state == TimerState.RUNNING:
+            await self._outstanding_i_frame_timer.stop()
+        if self._keepalive_timer and self._keepalive_timer.state == TimerState.RUNNING:
+            await self._keepalive_timer.stop()
         if discard_outgoing_frames:
             self.outgoing_frames = Queue()
         self.sequence_number = 0
@@ -95,10 +98,10 @@ class AX25Connection:
     async def send_ax25_frame(self, frame: AX25Frame):
         self.outgoing_frames.put(frame)
 
-    def add_ui_handler(self, handler: Coroutine[AX25Frame, None, None]):
+    def add_ui_handler(self, handler: Callable[[AX25Frame], Coroutine[AX25Frame, None, None]]):
         self._ui_handlers.append(handler)
 
-    def remove_ui_handler(self, handler: Coroutine[AX25Frame, None, None]):
+    def remove_ui_handler(self, handler: Callable[[AX25Frame], Coroutine[None, None, None]]):
         self._ui_handlers.remove(handler)
 
     async def handle_ui_frame(self, frame: AX25Frame):
@@ -110,7 +113,7 @@ class AX25Connection:
                 if self.modulo != AX25Modulo.MOD_128:
                     self.modulo = AX25Modulo.MOD_8
                     self.remote_address = frame.address_field.source
-                    self._reset_state()
+                    await self._reset_state()
                     await self._keepalive_timer.start()
                     await self.send_ax25_frame(AX25FrameFactory.ua_response(frame, poll_final=frame.control_field.poll_final))
                     self.state = AX25ConnectionState.CONNECTED
@@ -120,7 +123,7 @@ class AX25Connection:
                 if self.modulo != AX25Modulo.MOD_8:
                     self.modulo = AX25Modulo.MOD_128
                     self.remote_address = frame.address_field.source
-                    self._reset_state()
+                    await self._reset_state()
                     await self._keepalive_timer.start()
                     await self.send_ax25_frame(AX25FrameFactory.ua_response(frame, poll_final=frame.control_field.poll_final))
                     self.state = AX25ConnectionState.CONNECTED
@@ -148,12 +151,12 @@ class AX25Connection:
                 await self.send_ax25_frame(AX25FrameFactory.dm_response(frame, poll_final=True))
         elif frame.control_field.frame_type == AX25FrameType.UNN_DM|AX25FrameType.U_FRAME:
             if frame.control_field.poll_final:
-                self._reset_state()
+                await self._reset_state()
                 self.state = AX25ConnectionState.DISCONNECTED
         elif frame.control_field.frame_type == AX25FrameType.UNN_UA|AX25FrameType.U_FRAME:
             if frame.control_field.poll_final:
                 self.remote_address = frame.address_field.source
-                self._reset_state()
+                await self._reset_state()
                 self.state = AX25ConnectionState.CONNECTED
             
     async def awaiting_release_frame_handler(self, frame: AX25Frame):
@@ -170,11 +173,11 @@ class AX25Connection:
                 await self.send_ax25_frame(AX25FrameFactory.dm_response(frame, poll_final=True))
         elif frame.control_field.frame_type == AX25FrameType.UNN_UA|AX25FrameType.U_FRAME:
             if frame.control_field.poll_final:
-                self._reset_state()
+                await self._reset_state()
                 self.state = AX25ConnectionState.DISCONNECTED
         elif frame.control_field.frame_type == AX25FrameType.UNN_DM|AX25FrameType.U_FRAME:
             if frame.control_field.poll_final:
-                self._reset_state()
+                await self._reset_state()
                 self.state = AX25ConnectionState.DISCONNECTED
 
     async def connected_frame_handler(self, frame: AX25Frame):
@@ -182,16 +185,16 @@ class AX25Connection:
             await self.handle_ui_frame(frame)
         elif frame.control_field.frame_type == AX25FrameType.UNN_DISC|AX25FrameType.U_FRAME:
             await self.send_ax25_frame(AX25FrameFactory.ua_response(frame, poll_final=frame.control_field.poll_final))
-            self._reset_state()
+            await self._reset_state()
             self.state = AX25ConnectionState.DISCONNECTED
         elif frame.control_field.frame_type == AX25FrameType.UNN_SABM|AX25FrameType.U_FRAME or frame.control_field.frame_type == AX25FrameType.UNN_SABME|AX25FrameType.U_FRAME:
             await self.send_ax25_frame(AX25FrameFactory.ua_response(frame, poll_final=frame.control_field.poll_final))
-            self._reset_state(discard_outgoing_frames=self.sequence_number != self.ack_sequence_number)
-            self._keepalive_timer.start()
+            await self._reset_state(discard_outgoing_frames=self.sequence_number != self.ack_sequence_number)
+            await self._keepalive_timer.start()
         elif frame.control_field.frame_type == AX25FrameType.UNN_UA|AX25FrameType.U_FRAME:
             self.state = AX25ConnectionState.AWAITING_CONNECTION
         elif frame.control_field.frame_type == AX25FrameType.UNN_DM|AX25FrameType.U_FRAME:
-            self._reset_state()
+            await self._reset_state()
             self.state = AX25ConnectionState.DISCONNECTED
         elif frame.control_field.frame_type ==  AX25FrameType.UNN_FRMR|AX25FrameType.U_FRAME:
             self.state = AX25ConnectionState.AWAITING_CONNECTION

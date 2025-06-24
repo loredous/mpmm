@@ -1,0 +1,16 @@
+[project]
+name = "kiss"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Jeremy Banker", email = "loredous@loredous.net" }
+]
+requires-python = ">=3.12"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kiss"]

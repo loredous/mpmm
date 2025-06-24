@@ -21,8 +21,8 @@ from logging import getLogger
 import uuid
 from dataclasses import dataclass
 
-import utils
-from mpmm_kiss.kiss_frame import KISSFrame
+import kiss.utils
+from kiss.frame import KISSFrame
 
 
 
@@ -62,7 +62,7 @@ class KISSClient(ABC):
         self._stop_requested = True
         await self._await_stop(timeout)
         if close:
-            self.close()
+            await self.close()
 
     async def _await_stop(self, timeout: int):
         for _ in range(timeout):
@@ -70,7 +70,7 @@ class KISSClient(ABC):
                 return
             await asyncio.sleep(1)
         raise RuntimeError(
-            f"Stop was requested on KISSClient[{self.address}] but failed to stop with {timeout}s timeout."
+            f"Stop was requested on {self} but failed to stop with {timeout}s timeout."
         )
 
     @abstractmethod
@@ -147,10 +147,11 @@ class KISSMockClientMessage():
         frame(bytes): KISS Frame to send
         next_send(int): Next epoch time to send this message. Default -1 to send at start + interval
     """    
+    frame: KISSFrame 
     interval: int = 60
     repeat: bool = True 
     next_send: int = -1
-    frame: KISSFrame 
+    
 
 class KISSMockClient(KISSClient):
     """Mock KISS client for testing use
@@ -169,7 +170,7 @@ class KISSMockClient(KISSClient):
     async def listen_loop(self):
         while True:
             try:
-                now = utils.get_time()
+                now = kiss.utils.get_time()
                 async with asyncio.timeout(10):
                     for message in self._Mock_messages:
                         if message.next_send <= now:

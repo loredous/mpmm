@@ -1,6 +1,7 @@
 from asyncio import Task, get_running_loop, AbstractEventLoop, sleep
 from enum import Enum
 from collections.abc import Coroutine
+from typing import Awaitable, Callable
 
 class TimerError(Exception):
     pass
@@ -16,9 +17,9 @@ class TimerState(Enum):
     EXPIRED = 2
 
 class Timer:
-    def __init__(self, callback: Coroutine["Timer",TimerResult], loop: AbstractEventLoop = None, timeout: float = 0):
+    def __init__(self, callback: Callable[["Timer", TimerResult],Awaitable[None]], loop: AbstractEventLoop | None = None, timeout: float = 0):
         self._loop = loop or get_running_loop()
-        self._task: Task = None
+        self._task: Task | None = None
         self._timeout = timeout
         self._callback = callback
         self._state = TimerState.STOPPED
@@ -55,7 +56,8 @@ class Timer:
     async def stop(self):
         if self._state == TimerState.STOPPED:
             raise TimerError("Timer already stopped")
-        self._task.cancel()
+        if self._task:
+            self._task.cancel()
         await self._callback(self, TimerResult.CANCELLED)
         self._state = TimerState.STOPPED
         

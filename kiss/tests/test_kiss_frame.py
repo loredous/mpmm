@@ -15,7 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from hypothesis import given, note, strategies 
-from mpmm_kiss.kiss_frame import KISSFrame, KISSCommand
+from  kiss.frame import KISSFrame, KISSCommand
 
 
 def test_simple_decode():

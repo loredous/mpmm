@@ -17,7 +17,7 @@
 import base64
 from hypothesis import given, note, strategies as st
 
-from mpmm_ax25.ax25_frame import AX25PID, AX25AddressField, AX25ControlField, AX25Frame, AX25Address, AX25FrameType, AX25Modulo
+from ax25.frame import AX25PID, AX25AddressField, AX25ControlField, AX25Frame, AX25Address, AX25FrameType, AX25Modulo
 
 
 
