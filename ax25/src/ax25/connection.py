@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, Coroutine, Optional, Awaitable
-from asyncio import AbstractEventLoop, get_running_loop, Task
 from queue import Queue
 
 from ax25.frame import AX25Address, AX25Frame, AX25FrameFactory, AX25FrameType, AX25Modulo

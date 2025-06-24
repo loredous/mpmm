@@ -104,7 +104,7 @@ class AX25AddressField():
         source = AX25Address.decode(address_bytes[7:14])
         repeaters = []
         if len(address_bytes) > 14:
-            for address in chunk(value_list=address_bytes[14:], chunk_size=7):
+            for address in chunk(value_list=list(address_bytes[14:]), chunk_size=7):
                 repeaters.append(AX25Address.decode(bytes(address)))
         return cls(
             source=source,
@@ -128,7 +128,7 @@ class AX25AddressField():
         else:
             return f"{self.source.call_with_ssid}->{self.destination.call_with_ssid}"
 
-    def get_response_field(self) -> Self:
+    def get_response_field(self) -> "AX25AddressField":
         response_field = AX25AddressField(
             source=self.destination,
             destination=self.source,
@@ -193,6 +193,8 @@ class AX25ControlField():
                 frame_type = cls.decode_uframe_control(field_bytes, modulo)
                 sequence, receive = None, None
                 length = 1
+            case _:
+                raise ValueError("Invalid control field type")
         poll_final = bool(field_bytes[0] & 16)
         return cls(
             frame_type=frame_type,
@@ -213,8 +215,12 @@ class AX25ControlField():
                     return self.encode_uframe()
                 case AX25FrameType.S_FRAME.value:
                     return self.encode_sframe()
+                case _:
+                    raise ValueError("Invalid frame type for encoding")
 
     def encode_iframe(self) -> bytes:
+        if self.sequence is None or self.receive is None:
+            raise ValueError("Sequence and receive numbers must be set for I-frames")
         frame_value = 0
         frame_value += self.sequence << 1
         frame_value += self.receive << 5
@@ -222,6 +228,8 @@ class AX25ControlField():
         return frame_value.to_bytes()
 
     def encode_sframe(self) -> bytes:
+        if self.receive is None:
+            raise ValueError("Receive number must be set for S-frames")
         frame_value = 1
         match self.frame_type.value & 120:  # Only care about SUP flags
             case AX25FrameType.SUP_RR.value:
@@ -342,9 +350,13 @@ class AX25Frame():
                 "Invalid data type for frame. Expected bytes or KISSFrame"
             )
         addr_field = cls.decode_address_field(frame_data)
+        if not addr_field or not addr_field.length:
+            raise ValueError("Invalid AX.25 address field in frame data")
         control_field = cls.decode_control_field(
             frame=frame_data, offset=addr_field.length, modulo=modulo
         )
+        if not control_field or not control_field.length:
+            raise ValueError("Invalid AX.25 control field in frame data")
         offset = addr_field.length + control_field.length
         pid = None
         if control_field.frame_type & (AX25FrameType.I_FRAME | AX25FrameType.UNN_UI):
@@ -415,7 +427,8 @@ class AX25FrameFactory:
             destination=remote
         )
         control = AX25ControlField(
-            AX25FrameType = AX25FrameType.U_FRAME | AX25FrameType.UNN_DISC,
+            frame_type = AX25FrameType.U_FRAME | AX25FrameType.UNN_DISC,
             poll_final=poll_final
         )
         frame = AX25Frame(address_field=addr, control_field=control, pid=AX25PID.NONE)
+        return frame

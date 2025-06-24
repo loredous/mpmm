@@ -1,6 +1,6 @@
 import asyncio
 from ax25.connection import AX25Connection
-from kiss.client import KISSClient, KISSMockClient, KISSMockClientMessage, KISSTCPClient
+from kiss.client import KISSClient
 from kiss.frame import KISSFrame
 
 

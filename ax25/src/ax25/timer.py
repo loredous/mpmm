@@ -1,6 +1,5 @@
 from asyncio import Task, get_running_loop, AbstractEventLoop, sleep
 from enum import Enum
-from collections.abc import Coroutine
 from typing import Awaitable, Callable
 
 class TimerError(Exception):

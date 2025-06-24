@@ -29,8 +29,8 @@ def chunk(value_list: list, chunk_size: int) -> Iterator:
     Returns:
         Iterator: Iterator that will return chunks of the original list
     """    
-    value_list = iter(value_list)
-    return iter(lambda: tuple(islice(value_list, chunk_size)), ())
+    value_iter = iter(value_list)
+    return iter(lambda: tuple(islice(value_iter, chunk_size)), ())
 
 def get_time_ms() -> int:
     """Get current system time since epoch in milliseconds
